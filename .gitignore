@@ -389,3 +389,7 @@ tmp/
 *.backup
 
 .langgraph_api
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
