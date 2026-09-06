@@ -13,13 +13,26 @@ from datetime import datetime, timedelta
 from langchain_core.chat_history import BaseChatMessageHistory, InMemoryChatMessageHistory
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 
-# 存储后端导入
-from langchain_community.chat_message_histories import (
-    RedisChatMessageHistory,
-    MongoDBChatMessageHistory,
-    PostgresChatMessageHistory,
-    FileChatMessageHistory
-)
+# 存储后端导入（新版 langchain-community 已将 MongoDB/Postgres 集成移至独立包，按需加载）
+try:
+    from langchain_community.chat_message_histories import RedisChatMessageHistory
+except ImportError:
+    RedisChatMessageHistory = None
+
+try:
+    from langchain_community.chat_message_histories import MongoDBChatMessageHistory
+except ImportError:
+    MongoDBChatMessageHistory = None
+
+try:
+    from langchain_community.chat_message_histories import PostgresChatMessageHistory
+except ImportError:
+    PostgresChatMessageHistory = None
+
+try:
+    from langchain_community.chat_message_histories import FileChatMessageHistory
+except ImportError:
+    FileChatMessageHistory = None
 
 class LangChainSessionManager:
     """
@@ -74,18 +87,24 @@ class LangChainSessionManager:
             return InMemoryChatMessageHistory()
 
         if self.storage_backend == "redis":
+            if RedisChatMessageHistory is None:
+                raise ImportError("Redis 后端需要安装 langchain-community（含 Redis 集成）或安装 langchain-redis")
             return RedisChatMessageHistory(
                 session_id=session_id,
                 url=self.storage_config["url"],
             )
 
         if self.storage_backend == "mongodb":
+            if MongoDBChatMessageHistory is None:
+                raise ImportError("MongoDB 后端已从 langchain-community 移除，请安装 langchain-mongodb 并改用其实现")
             return MongoDBChatMessageHistory(
                 session_id=session_id,
                 connection_string=self.storage_config["connection_string"],
             )
 
         if self.storage_backend == "postgres":
+            if PostgresChatMessageHistory is None:
+                raise ImportError("Postgres 后端已从 langchain-community 移除，请安装 langchain-postgres 并改用其实现")
             return PostgresChatMessageHistory(
                 session_id=session_id,
                 connection_string=self.storage_config["connection_string"],
