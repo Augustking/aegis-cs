@@ -28,7 +28,8 @@ VERSION = "1.0.0"
 
 # 回复质检与人工接管
 QUALITY_CHECK_ENABLED = os.getenv("QUALITY_CHECK_ENABLED", "true").lower() in ("1", "true", "yes")
-QUALITY_THRESHOLD = float(os.getenv("QUALITY_THRESHOLD", "6.0"))
+# 经阈值扫描定标（见 README 评测结果）：8 为推荐工作点，漏拦代价高于误拦
+QUALITY_THRESHOLD = float(os.getenv("QUALITY_THRESHOLD", "8.0"))
 
 # 意图分类专用模型（可选轻量档，降延迟降成本）；留空与 OPENAI_MODEL 一致
 CLASSIFY_MODEL = os.getenv("CLASSIFY_MODEL", "")

@@ -129,13 +129,35 @@ def stage_gate(llm, data, workers=None):
     print(f"\ngate 完成，共 {len(cache)} 条（缓存于 {GATE_CACHE}）")
 
 
+def _bad_case_evidence(query: str) -> str:
+    """坏例评测需要与生产一致的证据输入：按关键词路由到对应 Agent 的数据匹配器"""
+    from multi_agents.billing_agent import BillingAgent
+    from multi_agents.complaint_agent import ComplaintAgent
+    from multi_agents.general_agent import GeneralAgent
+    from multi_agents.product_agent import ProductAgent
+    from multi_agents.tech_agent import TechAgent
+
+    routes = [
+        (("退款", "发票", "支付", "优惠券", "账单"), BillingAgent(), "_match_billing_info"),
+        (("耳机", "机器人", "音箱", "错误代码", "开机", "WiFi"), TechAgent(), "_match_tech_info"),
+        (("羽绒服", "显示器", "手机壳", "手表"), ProductAgent(), "_match_products"),
+        (("投诉", "差评", "态度"), ComplaintAgent(), "_match_complaint_info"),
+        (("工作时间", "发货", "快递", "货到付款", "新用户", "优惠活动"), GeneralAgent(), "_match_service_info"),
+    ]
+    for keywords, agent, method in routes:
+        if any(k in query for k in keywords):
+            return getattr(agent, method)(query)
+    return ""
+
+
 def stage_bad(llm, data):
-    """构造坏例的质检打分（断点续跑）"""
+    """构造坏例的质检打分（断点续跑）；证据输入与生产链路一致（接地质检）"""
     out = load_json(BAD_CACHE, [])
     for idx, bc in enumerate(data["bad_cases"]):
         if any(x["question"] == bc["question"] and x["flaw"] == bc["flaw"] for x in out):
             continue
-        resp = llm.invoke(build_judge_messages(bc["question"], bc["reply"]))
+        evidence = _bad_case_evidence(bc["question"])
+        resp = llm.invoke(build_judge_messages(bc["question"], bc["reply"], evidence=evidence))
         score, reason = parse_judge_output(getattr(resp, "content", ""))
         out.append(
             {"question": bc["question"], "flaw": bc["flaw"], "score": score, "reason": reason}
