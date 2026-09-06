@@ -30,6 +30,9 @@ VERSION = "1.0.0"
 QUALITY_CHECK_ENABLED = os.getenv("QUALITY_CHECK_ENABLED", "true").lower() in ("1", "true", "yes")
 QUALITY_THRESHOLD = float(os.getenv("QUALITY_THRESHOLD", "6.0"))
 
+# 意图分类专用模型（可选轻量档，降延迟降成本）；留空与 OPENAI_MODEL 一致
+CLASSIFY_MODEL = os.getenv("CLASSIFY_MODEL", "")
+
 # 日志配置
 LOG_CONFIG = {
     "level": os.getenv("LOG_LEVEL", "INFO"),

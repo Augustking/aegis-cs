@@ -189,6 +189,8 @@ session_manager = default_session_manager
 
 # 延迟初始化LLM
 _llm_instance = None
+_classify_llm_instance = None
+
 
 def initialize_llm_client():
     """初始化OpenAI兼容API客户端"""
@@ -200,6 +202,23 @@ def initialize_llm_client():
         base_url=OPENAI_BASE_URL,
         model=OPENAI_MODEL
     )
+
+
+def get_classify_llm():
+    """意图分类用 LLM：CLASSIFY_MODEL 可指定轻量模型降延迟降成本，缺省与主模型一致。"""
+    global _classify_llm_instance
+    if _classify_llm_instance is None:
+        if not OPENAI_API_KEY:
+            print("❌ 错误: API密钥未设置，无法初始化分类 LLM")
+            return None
+        model = CLASSIFY_MODEL or OPENAI_MODEL
+        _classify_llm_instance = OpenAICompatibleClient(
+            api_key=OPENAI_API_KEY,
+            base_url=OPENAI_BASE_URL,
+            model=model,
+        )
+        print(f"✅ 分类 LLM 就绪（{model}）")
+    return _classify_llm_instance
 
 def get_llm():
     """获取LLM实例，延迟初始化"""
@@ -306,7 +325,7 @@ def classify_query_node(state: AgentState) -> AgentState:
 
     # 使用分类工具
     try:
-        llm_instance = get_llm()
+        llm_instance = get_classify_llm() or get_llm()
         # 使用正确的工具调用方式
         try:
             result = classify_query.invoke({"query": customer_query, "llm": llm_instance})
