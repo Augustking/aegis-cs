@@ -119,13 +119,12 @@ class BillingAgent(BaseAgent):
         if not matched_info:
             for category, policies in self.billing_database.items():
                 if any(keyword in query_lower for keyword in ["退款", "发票", "支付", "账单", "价格"]):
-                    if category not in [info.split('【')[1].split('】')[0] for info in matched_info]:
-                        info_text = f"""相关服务：{category}\n"""
-                        # 只显示前2项政策
-                        for i, (policy, description) in enumerate(policies.items()):
-                            if i < 2:
-                                info_text += f"• {policy}：{description}\n"
-                        info_text += "..."
-                        matched_info.append(info_text)
+                    info_text = f"""相关服务：{category}\n"""
+                    # 只显示前2项政策
+                    for i, (policy, description) in enumerate(policies.items()):
+                        if i < 2:
+                            info_text += f"• {policy}：{description}\n"
+                    info_text += "..."
+                    matched_info.append(info_text)
 
         return "\n".join(matched_info) if matched_info else ""
