@@ -5,23 +5,24 @@
 
 import json
 import re
-from typing import Tuple
+from typing import Dict, Optional, Tuple
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
 _JUDGE_SYSTEM_PROMPT = """你是客服回复质检员。请对"AI客服回复"严格打分（0-10 分，整数）。
 
 评分维度（综合）：
-1. 相关性：是否针对用户的最新问题（0-4 分）
-2. 解答度：是否实际解答诉求，还是空泛敷衍（0-3 分）
-3. 可信度：是否编造信息、与上下文矛盾、包含明显错误（0-3 分）
+1. 相关性 relevance：是否针对用户的最新问题（0-4 分）
+2. 解答度 completeness：是否实际解答诉求，还是空泛敷衍（0-3 分）
+3. 可信度 faithfulness：是否编造信息、与上下文矛盾、包含明显错误（0-3 分）
 
 判定口径：
 - 回答了问题但需要用户补充信息 → 7 分以上
 - 空泛套话、答非所问、明显未理解问题 → 3 分以下
 - 编造具体承诺（金额/时间/政策）→ 0-2 分
 
-只输出 JSON：{"score": <0-10整数>, "reason": "<20字以内理由>"}，不要输出任何其他内容。"""
+只输出 JSON，不要输出任何其他内容：
+{"score": <0-10整数>, "reason": "<20字以内理由>", "dims": {"relevance": <0-4>, "completeness": <0-3>, "faithfulness": <0-3>}}"""
 
 
 def build_judge_messages(query: str, response: str, context: str = "") -> list:
@@ -65,3 +66,30 @@ def parse_judge_output(raw: object) -> Tuple[float, str]:
         if 0 <= v <= 10:
             return v, "parsed_fallback"
     return 10.0, "parse_failed"
+
+
+# 维度分的合法区间（与 judge 提示词口径一致）
+_DIM_RANGES = {"relevance": (0.0, 4.0), "completeness": (0.0, 3.0), "faithfulness": (0.0, 3.0)}
+
+
+def parse_judge_dims(raw: object) -> Optional[Dict[str, float]]:
+    """解析维度分；缺失或非法返回 None（兼容旧格式输出，不阻断主流程）。"""
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("dims"), dict):
+        return None
+    dims: Dict[str, float] = {}
+    for name, (lo, hi) in _DIM_RANGES.items():
+        try:
+            v = float(data["dims"][name])
+        except (KeyError, TypeError, ValueError):
+            return None
+        dims[name] = max(lo, min(hi, v))
+    return dims

@@ -3,10 +3,11 @@
 """
 
 from .query_tools import classify_query
-from .quality_tools import build_judge_messages, parse_judge_output
+from .quality_tools import build_judge_messages, parse_judge_dims, parse_judge_output
 
 __all__ = [
     "classify_query",
     "build_judge_messages",
     "parse_judge_output",
+    "parse_judge_dims",
 ]

@@ -30,7 +30,7 @@ from multi_agents import (
     ProductAgent, TechAgent, BillingAgent,
     ComplaintAgent, GeneralAgent
 )
-from tools import classify_query, build_judge_messages, parse_judge_output
+from tools import classify_query, build_judge_messages, parse_judge_dims, parse_judge_output
 import ticket_store
 
 # 导入会话管理器
@@ -70,6 +70,7 @@ class AgentState(TypedDict):
     # —— 质检与人工接管（quality_check / human_handoff 节点写入）——
     quality_score: float
     quality_reason: str
+    quality_dims: Dict[str, float]
     needs_human: bool
     ticket_id: str
     # 每步决策快照（分类/质检/转人工/挂起/最终回复），checkpointer 持久化，供工作台回放
@@ -419,9 +420,20 @@ def _quality_threshold() -> float:
     return threshold
 
 
+def _fallback_dims(score: float) -> Dict[str, float]:
+    """judge 未按新格式输出维度分时，按总分比例兜底（0-4/0-3/0-3）。"""
+    s = max(0.0, min(10.0, float(score)))
+    return {
+        "relevance": round(s * 0.4, 1),
+        "completeness": round(s * 0.3, 1),
+        "faithfulness": round(s * 0.3, 1),
+    }
+
+
 def quality_check_node(state: AgentState) -> AgentState:
-    """LLM-as-judge 给业务回复打 0-10 分；任何故障 fail-open 放行。"""
+    """LLM-as-judge 给业务回复打 0-10 分 + 三维子分；任何故障 fail-open 放行。"""
     threshold = _quality_threshold()
+    dims = _fallback_dims(10.0)
     if not QUALITY_CHECK_ENABLED:
         score, reason = 10.0, "quality_check_disabled"
     else:
@@ -440,19 +452,22 @@ def quality_check_node(state: AgentState) -> AgentState:
                     state.get("customer_query", ""), state.get("response", ""), context
                 )
             )
-            score, reason = parse_judge_output(getattr(resp, "content", ""))
+            raw = getattr(resp, "content", "")
+            score, reason = parse_judge_output(raw)
+            dims = parse_judge_dims(raw) or _fallback_dims(score)
         except Exception as e:
             print(f"⚠️ 质检失败，fail-open 放行: {e}")
 
     state["quality_score"] = float(score)
     state["quality_reason"] = str(reason)
+    state["quality_dims"] = dims
     state["tools_used"].append("quality_check")
     state["decision_trace"] = list(state.get("decision_trace") or []) + [
         {"step": "quality_check", "score": float(score), "reason": str(reason),
-         "threshold": threshold,
+         "threshold": threshold, "dims": dims,
          "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
     ]
-    print(f"🔍 质检得分 {score}（阈值 {threshold}）：{reason}")
+    print(f"🔍 质检得分 {score}（阈值 {threshold}）维度 {dims}：{reason}")
     return state
 
 
@@ -480,6 +495,7 @@ def human_handoff_node(state: AgentState) -> AgentState:
                 draft_reply=state.get("response", ""),
                 quality_score=state.get("quality_score", 0.0),
                 quality_reason=state.get("quality_reason", ""),
+                quality_dims=state.get("quality_dims"),
             )
     except Exception as e:
         print(f"❌ 工单落库失败（转接话术照常回复）: {e}")
