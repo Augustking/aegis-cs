@@ -1,4 +1,6 @@
-<h1 align="center">多智能体客服系统 · 质检与人工接管增强版</h1>
+<h1 align="center">🛡️ Aegis-CS · 多智能体客服系统</h1>
+
+<p align="center"><em>神盾 = 质检节点：在 AI 回答送达客户之前，先由另一个 AI 把关</em></p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-yellow.svg" alt="License Apache 2.0"></a>
@@ -79,8 +81,8 @@ flowchart LR
 ## 快速开始
 
 ```bash
-git clone https://github.com/Augustking/customer-service-ai-agent.git
-cd customer-service-ai-agent
+git clone https://github.com/Augustking/aegis-cs.git
+cd aegis-cs
 
 # 后端（Python 3.10+）
 python -m venv .venv
