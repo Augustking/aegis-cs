@@ -74,8 +74,10 @@ def stage_classify(llm, data):
         print(f"  {k:18s} {c}/{t}")
 
 
-def stage_gate(llm, data):
-    """真实图运行：采集质检分数 / 误拦 / 延迟 / 调用次数（断点续跑）"""
+def stage_gate(llm, data, workers=5):
+    """真实图运行：采集质检分数 / 误拦 / 延迟 / 调用次数（断点续跑 + 并发）"""
+    from concurrent.futures import ThreadPoolExecutor
+
     cache = load_json(GATE_CACHE, {})
     in_scope = [
         (it, b["label"])
@@ -83,18 +85,17 @@ def stage_gate(llm, data):
         if b["label"] != "out_of_scope"
         for it in b["items"]
     ]
+    todo = [(idx, q, bucket) for idx, (q, bucket) in enumerate(in_scope) if q not in cache]
     app = svc.make_graph()
-    for idx, (q, bucket) in enumerate(in_scope):
-        if q in cache:
-            continue
+
+    def run_one(item):
+        idx, q, bucket = item
         t0 = time.time()
-        state = app.invoke(
-            {"customer_query": q, "session_id": f"eval-gate-{idx}"}
-        )
+        state = app.invoke({"customer_query": q, "session_id": f"eval-gate-{idx}"})
         dt = time.time() - t0
         trace = state.get("decision_trace") or []
         qstep = next((s for s in trace if s.get("step") == "quality_check"), None)
-        cache[q] = {
+        return q, {
             "bucket": bucket,
             "latency_s": round(dt, 2),
             "query_type": state.get("query_type"),
@@ -105,12 +106,16 @@ def stage_gate(llm, data):
             + (2 if any(s.get("step") == "quality_check" for s in trace) else 0),
             "reply_head": str(state.get("response", ""))[:60],
         }
-        save_json(GATE_CACHE, cache)
-        v = cache[q]
-        print(
-            f"[gate {idx + 1}/{len(in_scope)}] {q[:16]}… score={v['quality_score']} "
-            f"handoff={v['needs_human']} calls={v['llm_calls']} {dt:.1f}s"
-        )
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for q, rec in pool.map(run_one, todo):
+            cache[q] = rec
+            save_json(GATE_CACHE, cache)
+            print(
+                f"[gate {len(cache)}/{len(in_scope)}] {q[:16]}… score={rec['quality_score']} "
+                f"handoff={rec['needs_human']} calls={rec['llm_calls']} {rec['latency_s']}s",
+                flush=True,
+            )
     print(f"\ngate 完成，共 {len(cache)} 条（缓存于 {GATE_CACHE}）")
 
 
