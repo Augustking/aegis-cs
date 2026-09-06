@@ -6,6 +6,7 @@
 from typing import Dict, List, Any
 from langchain_core.messages import HumanMessage, SystemMessage
 from .base_agent import BaseAgent
+from services.business_data import get_business_data
 
 class GeneralAgent(BaseAgent):
     def __init__(self):
@@ -15,28 +16,7 @@ class GeneralAgent(BaseAgent):
             expertise=["信息查询", "基础服务", "问题转接"]
         )
 
-        # TODO: 服务信息应该从客服系统获取，这里只是模拟数据
-        # 实际应用中应该连接客服数据库或调用客服API服务
-        self.service_database = {
-            "营业时间": {
-                "在线客服": "7×24小时在线服务",
-                "电话客服": "周一至周日 9:00-21:00",
-                "门店服务": "周一至周日 10:00-22:00",
-                "节假日安排": "节假日期间服务时间可能调整，请关注公告"
-            },
-            "联系方式": {
-                "客服热线": "400-123-4567",
-                "在线客服": "官网右下角在线聊天",
-                "邮箱支持": "support@company.com",
-                "微信客服": "关注公众号，点击在线客服"
-            },
-            "常见服务": {
-                "订单查询": "提供订单号或手机号即可查询",
-                "物流跟踪": "支持实时物流信息查询",
-                "会员服务": "积分查询、等级升级、专属优惠",
-                "售后服务": "7天无理由退货，30天质量问题换货"
-            }
-        }
+        self.service_database = get_business_data("general")
 
     def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """处理一般咨询查询"""

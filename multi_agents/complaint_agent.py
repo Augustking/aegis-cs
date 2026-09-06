@@ -6,6 +6,7 @@
 from typing import Dict, List, Any
 from langchain_core.messages import HumanMessage, SystemMessage
 from .base_agent import BaseAgent
+from services.business_data import get_business_data
 
 class ComplaintAgent(BaseAgent):
     def __init__(self):
@@ -15,28 +16,7 @@ class ComplaintAgent(BaseAgent):
             expertise=["问题记录", "解决方案", "补偿措施", "服务改进"]
         )
 
-        # TODO: 投诉处理信息应该从客服系统获取，这里只是模拟数据
-        # 实际应用中应该连接客服数据库或调用客服API服务
-        self.complaint_database = {
-            "服务问题": {
-                "响应速度慢": "承诺24小时内响应，超时提供补偿",
-                "服务态度差": "记录问题，安排专人跟进，提供道歉补偿",
-                "专业能力不足": "安排专业培训，提供专家支持",
-                "处理流程": "记录问题 → 分析原因 → 制定方案 → 执行解决 → 回访确认"
-            },
-            "产品质量": {
-                "功能缺陷": "提供免费维修或更换，延长保修期",
-                "外观瑕疵": "提供更换或折扣补偿",
-                "性能不达标": "技术检测确认后，提供升级或退款",
-                "补偿标准": "根据问题严重程度，提供10%-100%的补偿"
-            },
-            "物流配送": {
-                "配送延迟": "超时提供运费补偿，加急配送",
-                "包装破损": "拍照记录，提供更换或补偿",
-                "配送错误": "免费重新配送，提供额外补偿",
-                "紧急处理": "24小时内响应，48小时内解决"
-            }
-        }
+        self.complaint_database = get_business_data("complaint")
 
     def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """处理投诉相关查询"""

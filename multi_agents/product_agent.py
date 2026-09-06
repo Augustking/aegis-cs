@@ -6,6 +6,7 @@
 from typing import Dict, List, Any
 from langchain_core.messages import HumanMessage, SystemMessage
 from .base_agent import BaseAgent
+from services.business_data import get_business_data
 
 class ProductAgent(BaseAgent):
     def __init__(self):
@@ -15,42 +16,7 @@ class ProductAgent(BaseAgent):
             expertise=["产品规格", "价格比较", "功能特点", "市场分析"]
         )
 
-        # TODO: 产品信息应该从数据库获取，这里只是模拟数据
-        # 实际应用中应该连接产品数据库或调用产品API服务
-        self.product_database = {
-            "手机": {
-                "品牌": "智能科技",
-                "型号": ["X1 Pro", "X2 Max", "X3 Lite"],
-                "价格区间": "1999-5999元",
-                "主要特点": ["5G网络", "AI摄影", "长续航", "快充技术"],
-                "适用人群": "商务人士、摄影爱好者、游戏玩家",
-                "推荐指数": "⭐⭐⭐⭐⭐"
-            },
-            "电脑": {
-                "品牌": "计算科技",
-                "型号": ["ThinkPad Pro", "ThinkPad Air", "ThinkPad Gaming"],
-                "价格区间": "3999-12999元",
-                "主要特点": ["高性能处理器", "大容量存储", "轻薄设计", "长续航"],
-                "适用人群": "学生、办公人员、设计师、程序员",
-                "推荐指数": "⭐⭐⭐⭐⭐"
-            },
-            "耳机": {
-                "品牌": "音频科技",
-                "型号": ["SoundPro", "SoundAir", "SoundSport"],
-                "价格区间": "299-1299元",
-                "主要特点": ["降噪技术", "无线连接", "音质优秀", "舒适佩戴"],
-                "适用人群": "音乐爱好者、运动人士、商务人士",
-                "推荐指数": "⭐⭐⭐⭐"
-            },
-            "平板": {
-                "品牌": "平板科技",
-                "型号": ["Tab Pro", "Tab Air", "Tab Mini"],
-                "价格区间": "1999-5999元",
-                "主要特点": ["高清屏幕", "触控笔支持", "多任务处理", "轻薄便携"],
-                "适用人群": "学生、创意工作者、商务人士",
-                "推荐指数": "⭐⭐⭐⭐"
-            }
-        }
+        self.product_database = get_business_data("product")
 
     def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """处理产品相关查询"""
