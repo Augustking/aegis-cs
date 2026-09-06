@@ -12,7 +12,7 @@
 
 <p align="center"><em>LLM 质检打分 · 低分自动转人工 · 工单闭环 · Vue3 坐席工作台 · 决策轨迹回放</em></p>
 
-基于开源项目 [handsomestWei/customer-service-ai-agent](https://github.com/handsomestWei/customer-service-ai-agent)（Apache 2.0）深度二次开发的多智能体客服系统。在原有"意图分类 + 领域专家智能体"编排之上，新增**回复质检、人工接管闭环、Vue3 坐席工作台、SSE 实时推送与决策轨迹回放**，形成一条完整的生产级客服工作流：
+面向电商售前售后场景的多智能体客服系统：以 LangGraph 编排"意图分类 → 领域专家智能体 → 回复质检 → 人工接管"的完整客服工作流，配套 **Vue3 坐席工作台、SSE 实时推送与决策轨迹回放**，构成"AI 先答、AI 自审、人工兜底"的质量链路。
 
 ```
 客户提问 → 意图分类 → 领域智能体作答 → 回复质检打分 ─┬─ 高分放行 → 客户
@@ -25,7 +25,7 @@
 
 ## 功能总览
 
-### 基础能力（来自上游项目）
+### 核心编排能力
 - LangGraph 状态图编排：意图分类节点按 6 类标签条件路由到产品 / 技术 / 账单 / 投诉 / 综合客服 5 个领域智能体
 - 越狱与范围外请求护栏（`out_of_scope` 固定话术拦截，不消耗业务智能体调用）
 - 多轮对话记忆：checkpointer 持久化对话状态，跨请求续聊
@@ -130,4 +130,4 @@ cd ..
 
 ## License
 
-Apache 2.0（项目基于 [handsomestWei/customer-service-ai-agent](https://github.com/handsomestWei/customer-service-ai-agent) 二次开发）
+[Apache-2.0](LICENSE)
