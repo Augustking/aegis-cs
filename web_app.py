@@ -24,6 +24,7 @@ from chat_web_service import (
     langgraph_connectivity_test,
     get_current_thread_id,
     inject_human_reply,
+    ticket_stream_events,
 )
 import ticket_store
 
@@ -215,6 +216,16 @@ def ticket_detail_route(ticket_id):
         return jsonify({'ticket': ticket})
     except Exception as e:
         return jsonify({'error': f'获取工单失败: {e}'}), 500
+
+
+@app.route('/api/tickets/stream')
+def ticket_stream_route():
+    """SSE：工单队列变化推送（EventSource 断线自动重连）"""
+    return Response(
+        ticket_stream_events(),
+        mimetype='text/event-stream',
+        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
+    )
 
 
 @app.route('/api/tickets/<ticket_id>/resolve', methods=['POST'])

@@ -15,6 +15,8 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 import requests
 from dotenv import load_dotenv
 
+import ticket_store
+
 load_dotenv()
 
 # -----------------------------------------------------------------------------
@@ -598,6 +600,34 @@ def stream_chat_events(user_message: str, client_session_id: Optional[str] = Non
         yield f"data: {json.dumps({'error': f'流式处理错误: {str(e)}'})}\n\n"
 
     yield "data: [DONE]\n\n"
+
+
+def ticket_change_event(last_ids, ids):
+    """diff 两次 open 工单 id 列表 → SSE 事件；无变化返回 None。"""
+    if last_ids is None:
+        return {"type": "init", "open_count": len(ids)}
+    if ids == last_ids:
+        return None
+    return {
+        "type": "update",
+        "open_count": len(ids),
+        "new_ids": [i for i in ids if i not in last_ids],
+    }
+
+
+def ticket_stream_events(poll_interval: float = 2.0):
+    """SSE 生成器：轮询共享工单库产出事件；查询异常发 error 事件后继续（不断流）。"""
+    last_ids = None
+    while True:
+        try:
+            ids = [t["id"] for t in ticket_store.list_tickets(status="open")]
+            event = ticket_change_event(last_ids, ids)
+            if event:
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            last_ids = ids
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        time.sleep(poll_interval)
 
 
 def inject_human_reply(thread_id: str, human_reply: str) -> Tuple[bool, Optional[str]]:
