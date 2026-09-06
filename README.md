@@ -30,7 +30,7 @@
 - 越狱与范围外请求护栏（`out_of_scope` 固定话术拦截，不消耗业务智能体调用）
 - 多轮对话记忆：checkpointer 持久化对话状态，跨请求续聊
 
-### 本次二次开发新增
+### 增强能力
 
 | 能力 | 说明 |
 |---|---|
@@ -128,14 +128,6 @@ cd ..
 - `pytest tests/`：27 个单元/集成测试（工单 CRUD、质检解析容错、四条图路径的决策轨迹、SSE 事件、SPA 路由）
 - `python deploy_verify.py`：端到端验收剧本（正常放行 / 强制转人工 / 挂起等待 / 人工处理恢复四场景），质量阈值经 `configurable` 注入，不依赖 LLM 输出的随机性
 
-## 二次开发说明
-
-本仓库基于 [handsomestWei/customer-service-ai-agent](https://github.com/handsomestWei/customer-service-ai-agent)（Apache 2.0）二次开发，遵循原许可证。相比上游的主要改动：
-
-- 新增质检节点 / 人工接管节点 / 工单存储 / SSE 推送 / 决策轨迹（设计与实现文档见 `docs/superpowers/`）
-- 新增 `frontend/` Vue3 应用，Flask 改为纯 API + SPA 托管（替换原 Jinja 模板页）
-- 兼容性修复：新版 langchain-community 移除 MongoDB 历史类的按需加载、Windows colorama 依赖、账单智能体兜底匹配的索引越界
-
 ## License
 
-Apache 2.0（继承自上游项目）
+Apache 2.0（项目基于 [handsomestWei/customer-service-ai-agent](https://github.com/handsomestWei/customer-service-ai-agent) 二次开发）
