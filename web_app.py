@@ -28,6 +28,7 @@ from chat_web_service import (
 )
 from functools import wraps
 
+import app_logging
 import auth_store
 import ticket_store
 
@@ -44,6 +45,18 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['PERMANENT_SESSION_LIFETIME'] = __import__('datetime').timedelta(hours=12)
 
 auth_store.ensure_default_agent()
+
+
+@app.before_request
+def _assign_request_id():
+    app_logging.new_request_id()
+
+
+@app.after_request
+def _access_log(resp):
+    app_logging.log("http", "access", method=request.method,
+                    path=request.path, status=resp.status_code)
+    return resp
 
 
 def require_agent(fn):
@@ -165,6 +178,9 @@ def customer_chat():
     if not tid:
         return visitor_response({'error': err_msg or '会话创建失败'}, http_code or 500)
     auth_store.bind_thread_owner(tid, get_visitor_id())
+    app_logging.log("chat", "customer_message", thread_id=tid,
+                    session_state=derive_service_state(tid),
+                    message=app_logging.mask_pii(message), outcome=err_msg or "ok")
     if err_msg == 'run_timeout':
         # 超时降级：ai_text 已是转人工话术，工单已落库（handle_run_timeout）
         return visitor_response({'response': ai_text, 'session_id': tid, 'thread_id': tid,
@@ -400,6 +416,8 @@ def resolve_ticket_route(ticket_id):
 
         ok, err = inject_human_reply(ticket['thread_id'], human_reply)
         ticket_store.resolve_ticket(ticket_id, human_reply)
+        app_logging.log("ticket", "resolved", ticket_id=ticket_id,
+                        thread_id=ticket['thread_id'], delivery="ok" if ok else "degraded")
         if not ok:
             return jsonify({
                 'message': '工单已处理，但人工回复写回会话失败（仅工单内可见）',

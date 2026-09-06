@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 
+import app_logging
 import multi_agent_customer_service as svc
 
 _checkpointer = None
@@ -71,8 +72,10 @@ def run_in_thread(thread_id: str, user_message: str, wait_limit: int,
     }
     future = _executor.submit(get_app().invoke, inp, cfg)
     try:
-        state = future.result(timeout=max(5, int(wait_limit)))
+        with app_logging.timed("graph", "chat_run", thread_id=thread_id):
+            state = future.result(timeout=max(5, int(wait_limit)))
     except TimeoutError:
+        app_logging.log("graph", "chat_run_timeout", thread_id=thread_id, wait_limit=wait_limit)
         return None, "run_timeout", 504
     except Exception as e:
         return None, f"运行失败: {e}", 500
