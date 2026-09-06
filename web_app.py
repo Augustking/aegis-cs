@@ -161,17 +161,21 @@ def customer_chat():
         vid = get_visitor_id()
         if not auth_store.visitor_owns_thread(session_id, vid):
             return visitor_response({'error': '会话不存在或无权访问'}, 403)
-    ai_text, err_msg, http_code = run_chat_sync(message, session_id or None)
+    ai_text, err_msg, http_code, tid = run_chat_sync(message, session_id if session_id != 'default' else None)
+    if not tid:
+        return visitor_response({'error': err_msg or '会话创建失败'}, http_code or 500)
+    auth_store.bind_thread_owner(tid, get_visitor_id())
+    if err_msg == 'run_timeout':
+        # 超时降级：ai_text 已是转人工话术，工单已落库（handle_run_timeout）
+        return visitor_response({'response': ai_text, 'session_id': tid, 'thread_id': tid,
+                                 'service_state': 'waiting', 'timeout_handoff': True})
     if err_msg:
         return visitor_response({'error': err_msg}, http_code or 500)
-    tid = get_current_thread_id()
-    if tid:
-        auth_store.bind_thread_owner(tid, get_visitor_id())
     return visitor_response({
         'response': ai_text,
         'session_id': tid,
         'thread_id': tid,
-        'service_state': derive_service_state(tid) if tid else 'normal',
+        'service_state': derive_service_state(tid),
     })
 
 
@@ -211,22 +215,18 @@ def customer_session_detail(thread_id):
 @app.route('/api/chat', methods=['POST'])
 @require_agent
 def chat():
-    """处理聊天请求"""
+    """处理聊天请求（坐席调试用）"""
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         user_message = (data.get('message') or '').strip()
-        client_session_id = data.get('session_id', 'default')
-
-        ai_text, err_msg, http_code = run_chat_sync(user_message, client_session_id)
+        client_session_id = data.get('session_id') or None
+        ai_text, err_msg, http_code, tid = run_chat_sync(user_message, client_session_id)
+        if err_msg == 'run_timeout':
+            return jsonify({'response': ai_text, 'session_id': tid, 'thread_id': tid,
+                            'timeout_handoff': True})
         if err_msg:
             return jsonify({'error': err_msg}), http_code or 500
-
-        tid = get_current_thread_id()
-        return jsonify({
-            'response': ai_text,
-            'session_id': tid,
-            'thread_id': tid,
-        })
+        return jsonify({'response': ai_text, 'session_id': tid, 'thread_id': tid})
     except Exception as e:
         print(f"❌ 聊天处理错误: {e}")
         import traceback

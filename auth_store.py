@@ -28,6 +28,10 @@ CREATE TABLE IF NOT EXISTS thread_owners (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_thread_owners_visitor ON thread_owners(visitor_id);
+CREATE TABLE IF NOT EXISTS thread_index (
+    thread_id  TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -138,3 +142,39 @@ def threads_of_visitor(visitor_id: str, limit: int = 50) -> list:
 
 def new_visitor_id() -> str:
     return str(uuid.uuid4())
+
+
+def record_thread(thread_id: str) -> None:
+    """登记线程索引（全量会话列表用）；已存在不覆盖创建时间。"""
+    conn = _connect()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO thread_index (thread_id, created_at) VALUES (?, ?)",
+            (thread_id, _now()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def list_threads(limit: int = 200) -> list:
+    """全部线程（新→旧），坐席会话列表用。"""
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            "SELECT thread_id, created_at FROM thread_index ORDER BY created_at DESC LIMIT ?",
+            (int(limit),),
+        ).fetchall()
+    finally:
+        conn.close()
+    return [{"thread_id": r["thread_id"], "created_at": r["created_at"]} for r in rows]
+
+
+def delete_thread_record(thread_id: str) -> None:
+    conn = _connect()
+    try:
+        conn.execute("DELETE FROM thread_index WHERE thread_id=?", (thread_id,))
+        conn.execute("DELETE FROM thread_owners WHERE thread_id=?", (thread_id,))
+        conn.commit()
+    finally:
+        conn.close()

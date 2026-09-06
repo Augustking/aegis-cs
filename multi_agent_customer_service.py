@@ -597,8 +597,8 @@ def final_response_node(state: AgentState) -> AgentState:
 #     "customer_service": "./multi_agent_customer_service.py:make_graph"
 # },
 # 也可以在langgraph.json文件中使用workflow配置化的方式定义图的结构，但功能相对简单，无法实现复杂的逻辑
-def make_graph():
-    """构建LangGraph工作流图"""
+def make_graph(checkpointer=None):
+    """构建LangGraph工作流图；传入 checkpointer 时对话状态跨进程/重启持久化。"""
     # 创建工作流图
     workflow = StateGraph(AgentState)
 
@@ -648,7 +648,7 @@ def make_graph():
     workflow.set_finish_point("final_response")
 
     # 编译工作流
-    app = workflow.compile()
+    app = workflow.compile(checkpointer=checkpointer)
 
     print("✅ LangGraph工作流图构建完成")
     return app
