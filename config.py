@@ -26,6 +26,10 @@ HTTP_HEADERS = {
 SYSTEM_NAME = "多智能体客服系统"
 VERSION = "1.0.0"
 
+# 回复质检与人工接管
+QUALITY_CHECK_ENABLED = os.getenv("QUALITY_CHECK_ENABLED", "true").lower() in ("1", "true", "yes")
+QUALITY_THRESHOLD = float(os.getenv("QUALITY_THRESHOLD", "6.0"))
+
 # 日志配置
 LOG_CONFIG = {
     "level": os.getenv("LOG_LEVEL", "INFO"),

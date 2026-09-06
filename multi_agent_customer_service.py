@@ -30,7 +30,8 @@ from multi_agents import (
     ProductAgent, TechAgent, BillingAgent,
     ComplaintAgent, GeneralAgent
 )
-from tools import classify_query
+from tools import classify_query, build_judge_messages, parse_judge_output
+import ticket_store
 
 # 导入会话管理器
 from session_manager import LangChainSessionManager, default_session_manager
@@ -39,6 +40,17 @@ from session_manager import LangChainSessionManager, default_session_manager
 OUT_OF_SCOPE_REPLY = (
     "抱歉，这里是智能客服，仅处理与产品、技术、账单、投诉及相关售后政策类问题；"
     "请用一句话说明您的具体业务诉求，我很乐意协助。"
+)
+
+# 低分回复转人工时给用户的固定话术（质检理由不透出给用户）
+HANDOFF_REPLY = (
+    "您好，您的问题已升级为人工工单，客服专员将尽快为您跟进处理，请稍候。"
+    "您也可以直接留言补充信息，处理结果会同步到本会话。"
+)
+# 挂起中的会话收到新消息时的固定话术
+SUSPENDED_REPLY = (
+    "您的问题已转接人工客服，工单正在处理中，请稍候；"
+    "如需补充信息请直接留言，客服专员会一并查看。"
 )
 
 # 定义状态类型
@@ -55,6 +67,11 @@ class AgentState(TypedDict):
     memory: Optional[BaseChatMessageHistory]
     # 由图 checkpointer 持久化，跨 LangGraph 工作进程仍可续聊（内存 session_manager 无法做到）
     persisted_dialogue: List[Any]
+    # —— 质检与人工接管（quality_check / human_handoff 节点写入）——
+    quality_score: float
+    quality_reason: str
+    needs_human: bool
+    ticket_id: str
 
 # OpenAI兼容API客户端类
 class OpenAICompatibleClient:
@@ -247,6 +264,9 @@ def classify_query_node(state: AgentState) -> AgentState:
     if "next_agent" not in state:
         state["next_agent"] = ""
 
+    if "needs_human" not in state:
+        state["needs_human"] = False
+
     if "messages" not in state:
         state["messages"] = []
 
@@ -258,6 +278,22 @@ def classify_query_node(state: AgentState) -> AgentState:
         state["response"] = "Error: No customer query provided"
         state["query_type"] = "general_inquiry"
         return state
+
+    # 人工接管挂起检查：该会话存在未处理工单时不走 AI（单一事实来源 = 工单库）
+    try:
+        if ticket_store.has_open_ticket(str(session_id)):
+            state["query_type"] = "suspended"
+            state["response"] = SUSPENDED_REPLY
+            state["current_agent"] = "智能客服"
+            state["tools_used"].append("suspended_for_human")
+            pd = list(state.get("persisted_dialogue") or [])
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            pd.append({"content": str(customer_query), "is_user": True, "timestamp": now})
+            pd.append({"content": SUSPENDED_REPLY, "is_user": False, "timestamp": now})
+            state["persisted_dialogue"] = pd
+            return state
+    except Exception as e:
+        print(f"⚠️ 挂起检查失败（忽略并继续 AI 流程）: {e}")
 
     # 使用分类工具
     try:
@@ -356,6 +392,89 @@ def create_agent_node(agent_name: str):
             return state
     return agent_node
 
+# 定义质检与人工接管节点
+def _quality_threshold() -> float:
+    """阈值优先级：run configurable.quality_threshold > env QUALITY_THRESHOLD > 6.0。"""
+    threshold = QUALITY_THRESHOLD
+    try:
+        cfg = get_config()
+        configurable = (cfg.get("configurable") or {}) if isinstance(cfg, dict) else {}
+        v = configurable.get("quality_threshold")
+        if v is not None:
+            threshold = float(v)
+    except RuntimeError:
+        pass
+    return threshold
+
+
+def quality_check_node(state: AgentState) -> AgentState:
+    """LLM-as-judge 给业务回复打 0-10 分；任何故障 fail-open 放行。"""
+    if not QUALITY_CHECK_ENABLED:
+        state["quality_score"] = 10.0
+        state["quality_reason"] = "quality_check_disabled"
+        return state
+
+    score, reason = 10.0, "quality_check_error"
+    try:
+        llm = get_llm()
+        if llm is None:
+            raise ValueError("LLM 不可用")
+        pd = list(state.get("persisted_dialogue") or [])
+        context = "\n".join(
+            f"{'用户' if m.get('is_user') else 'AI'}: {m.get('content', '')}"
+            for m in pd[-6:]
+        )
+        resp = llm.invoke(
+            build_judge_messages(
+                state.get("customer_query", ""), state.get("response", ""), context
+            )
+        )
+        score, reason = parse_judge_output(getattr(resp, "content", ""))
+    except Exception as e:
+        print(f"⚠️ 质检失败，fail-open 放行: {e}")
+
+    state["quality_score"] = float(score)
+    state["quality_reason"] = str(reason)
+    state["tools_used"].append("quality_check")
+    print(f"🔍 质检得分 {score}（阈值 {_quality_threshold()}）：{reason}")
+    return state
+
+
+def route_after_quality_check(state: AgentState) -> str:
+    return "handoff" if state.get("quality_score", 10.0) < _quality_threshold() else "pass"
+
+
+def human_handoff_node(state: AgentState) -> AgentState:
+    """低分回复转人工：原始回答作为草稿落工单，线程进入挂起，用户收固定话术。"""
+    ticket_id = ""
+    try:
+        ticket_id = ticket_store.create_ticket(
+            thread_id=str(state.get("session_id", "")),
+            user_query=state.get("customer_query", ""),
+            draft_reply=state.get("response", ""),
+            quality_score=state.get("quality_score", 0.0),
+            quality_reason=state.get("quality_reason", ""),
+        )
+    except Exception as e:
+        print(f"❌ 工单落库失败（转接话术照常回复）: {e}")
+
+    # 被驳回的草稿不下发给用户：从对话记录撤回，只保留在工单里供坐席参考
+    pd = list(state.get("persisted_dialogue") or [])
+    if pd and not pd[-1].get("is_user", True):
+        pd.pop()
+
+    state["ticket_id"] = ticket_id
+    state["needs_human"] = True
+    state["current_agent"] = "人工客服"
+    state["response"] = HANDOFF_REPLY
+    state["tools_used"].append("human_handoff")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    pd.append({"content": HANDOFF_REPLY, "is_user": False, "timestamp": now})
+    state["persisted_dialogue"] = pd
+    print(f"🎫 已创建人工工单 {ticket_id}（质检 {state.get('quality_score')} 分）")
+    return state
+
+
 # 定义最终响应节点
 def final_response_node(state: AgentState) -> AgentState:
     """Generate final response"""
@@ -383,6 +502,8 @@ def make_graph():
     workflow.add_node("billing_agent", create_agent_node("billing_agent"))
     workflow.add_node("complaint_agent", create_agent_node("complaint_agent"))
     workflow.add_node("general_agent", create_agent_node("general_agent"))
+    workflow.add_node("quality_check", quality_check_node)
+    workflow.add_node("human_handoff", human_handoff_node)
     workflow.add_node("final_response", final_response_node)
 
     # 设置入口点
@@ -399,15 +520,22 @@ def make_graph():
             "complaint": "complaint_agent",
             "general_inquiry": "general_agent",
             "out_of_scope": "final_response",
+            "suspended": "final_response",
         }
     )
 
-    # 添加直接边（所有智能体都连接到最终响应）
-    workflow.add_edge("product_agent", "final_response")
-    workflow.add_edge("tech_agent", "final_response")
-    workflow.add_edge("billing_agent", "final_response")
-    workflow.add_edge("complaint_agent", "final_response")
-    workflow.add_edge("general_agent", "final_response")
+    # 所有业务智能体先过质检，再决定放行或转人工
+    workflow.add_edge("product_agent", "quality_check")
+    workflow.add_edge("tech_agent", "quality_check")
+    workflow.add_edge("billing_agent", "quality_check")
+    workflow.add_edge("complaint_agent", "quality_check")
+    workflow.add_edge("general_agent", "quality_check")
+    workflow.add_conditional_edges(
+        "quality_check",
+        route_after_quality_check,
+        {"pass": "final_response", "handoff": "human_handoff"},
+    )
+    workflow.add_edge("human_handoff", "final_response")
 
     # 设置结束点
     workflow.set_finish_point("final_response")
