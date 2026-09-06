@@ -595,6 +595,33 @@ def stream_chat_events(user_message: str, client_session_id: Optional[str] = Non
     yield "data: [DONE]\n\n"
 
 
+def inject_human_reply(thread_id: str, human_reply: str) -> Tuple[bool, Optional[str]]:
+    """把人工坐席回复写回线程 persisted_dialogue（作为坐席轮次），恢复 AI 上下文。"""
+    try:
+        state_resp = requests.get(
+            f"{LANGGRAPH_API_URL}/threads/{thread_id}/state", timeout=10
+        )
+        if state_resp.status_code != 200:
+            return False, f"获取线程状态失败: {state_resp.status_code}"
+        values = (state_resp.json() or {}).get("values") or {}
+        pd = list(values.get("persisted_dialogue") or [])
+        pd.append({
+            "content": str(human_reply),
+            "is_user": False,
+            "timestamp": _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        })
+        update_resp = requests.post(
+            f"{LANGGRAPH_API_URL}/threads/{thread_id}/state",
+            json={"values": {"persisted_dialogue": pd}, "as_node": "final_response"},
+            timeout=10,
+        )
+        if not (200 <= update_resp.status_code < 300):
+            return False, f"写回线程状态失败: {update_resp.status_code}"
+        return True, None
+    except Exception as e:
+        return False, f"写回人工回复异常: {e}"
+
+
 def langgraph_connectivity_test() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     """
     探测 LangGraph 服务与搜索接口。

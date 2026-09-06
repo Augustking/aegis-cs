@@ -23,7 +23,9 @@ from chat_web_service import (
     clear_thread_and_create_new,
     langgraph_connectivity_test,
     get_current_thread_id,
+    inject_human_reply,
 )
+import ticket_store
 
 # 导入配置（与历史行为保持一致）
 from config import *  # noqa: E402,F401,F403
@@ -188,6 +190,59 @@ def test_langgraph():
     if err:
         return jsonify({'error': err}), 500
     return jsonify(result)
+
+
+@app.route('/api/tickets', methods=['GET'])
+def list_tickets_route():
+    """人工工单队列"""
+    status = request.args.get('status')
+    if status not in ('open', 'resolved', None, ''):
+        return jsonify({'error': 'status 仅支持 open/resolved'}), 400
+    try:
+        tickets = ticket_store.list_tickets(status or None)
+        return jsonify({'tickets': tickets})
+    except Exception as e:
+        return jsonify({'error': f'获取工单失败: {e}'}), 500
+
+
+@app.route('/api/tickets/<ticket_id>', methods=['GET'])
+def ticket_detail_route(ticket_id):
+    """工单详情（含草稿回复与质检理由）"""
+    try:
+        ticket = ticket_store.get_ticket(ticket_id)
+        if not ticket:
+            return jsonify({'error': '工单不存在'}), 404
+        return jsonify({'ticket': ticket})
+    except Exception as e:
+        return jsonify({'error': f'获取工单失败: {e}'}), 500
+
+
+@app.route('/api/tickets/<ticket_id>/resolve', methods=['POST'])
+def resolve_ticket_route(ticket_id):
+    """人工处理工单：写回会话并关闭工单；写回失败时降级为仅工单内可见"""
+    try:
+        data = request.get_json() or {}
+        human_reply = (data.get('human_reply') or '').strip()
+        if not human_reply:
+            return jsonify({'error': 'human_reply 不能为空'}), 400
+
+        ticket = ticket_store.get_ticket(ticket_id)
+        if not ticket:
+            return jsonify({'error': '工单不存在'}), 404
+        if ticket['status'] != 'open':
+            return jsonify({'error': f"工单状态为 {ticket['status']}，无法处理"}), 409
+
+        ok, err = inject_human_reply(ticket['thread_id'], human_reply)
+        ticket_store.resolve_ticket(ticket_id, human_reply)
+        if not ok:
+            return jsonify({
+                'message': '工单已处理，但人工回复写回会话失败（仅工单内可见）',
+                'degraded': True,
+                'detail': err,
+            })
+        return jsonify({'message': '人工回复已写入会话，AI 恢复接管', 'degraded': False})
+    except Exception as e:
+        return jsonify({'error': f'处理工单失败: {e}'}), 500
 
 
 def main():
