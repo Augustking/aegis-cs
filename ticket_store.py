@@ -94,6 +94,18 @@ def has_open_ticket(thread_id: str) -> bool:
     return row is not None
 
 
+def latest_ticket_for_thread(thread_id: str) -> Optional[Dict[str, Any]]:
+    """该线程最近一张工单（任意状态，新→旧）；无工单返回 None。"""
+    with _connect() as conn:
+        conn.executescript(_SCHEMA)
+        row = conn.execute(
+            "SELECT * FROM tickets WHERE thread_id=?"
+            " ORDER BY created_at DESC, rowid DESC LIMIT 1",
+            (thread_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
 def get_ticket(ticket_id: str) -> Optional[Dict[str, Any]]:
     with _connect() as conn:
         conn.executescript(_SCHEMA)

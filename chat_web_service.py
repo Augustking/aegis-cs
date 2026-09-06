@@ -62,6 +62,9 @@ def append_turn_from_state(conversation_history: List[Dict[str, Any]], msg: Dict
         "content": content,
         "role": "user" if is_user else "assistant",
     }
+    author = msg.get("author")
+    if author:
+        entry["author"] = author
     ts = msg.get("timestamp")
     if ts is not None and ts != "":
         entry["timestamp"] = ts
@@ -670,6 +673,7 @@ def inject_human_reply(thread_id: str, human_reply: str) -> Tuple[bool, Optional
         pd.append({
             "content": str(human_reply),
             "is_user": False,
+            "author": "human",
             "timestamp": _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         })
         update_resp = requests.post(

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self'; base-uri 'none'; form-action 'none'">
+  <title>知序服务 · 双端设计原型</title>
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="state.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <div class="demo-bar"><strong>阶段 3.1 · 离线交互原型</strong><span>全部人物、工单、回复均为虚构 · 不连接任何服务</span><nav aria-label="原型演示入口"><a href="#/chat">客户端演示</a><a href="#/agent/login">坐席端演示</a></nav></div>
+  <div id="app"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <dialog id="confirm-dialog" aria-labelledby="confirm-title"><form method="dialog"><h2 id="confirm-title">请确认操作</h2><p id="confirm-text"></p><pre id="confirm-preview"></pre><div class="actions"><button value="cancel">取消，继续编辑</button><button class="primary" value="confirm">确认</button></div></form></dialog>
+</body>
+</html>

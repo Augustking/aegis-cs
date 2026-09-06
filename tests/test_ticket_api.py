@@ -8,8 +8,14 @@ import web_app
 @pytest.fixture()
 def client(monkeypatch, tmp_path):
     monkeypatch.setenv("TICKET_DB_PATH", str(tmp_path / "tickets.db"))
+    monkeypatch.setenv("AUTH_DB_PATH", str(tmp_path / "auth.db"))
+    import auth_store
+    auth_store.ensure_default_agent()
     web_app.app.config["TESTING"] = True
-    return web_app.app.test_client()
+    c = web_app.app.test_client()
+    r = c.post("/api/auth/login", json={"username": "agent", "password": "aegis-demo"})
+    assert r.status_code == 200
+    return c
 
 
 def test_list_and_get_ticket(client):
