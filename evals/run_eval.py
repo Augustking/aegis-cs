@@ -74,9 +74,13 @@ def stage_classify(llm, data):
         print(f"  {k:18s} {c}/{t}")
 
 
-def stage_gate(llm, data, workers=5):
-    """真实图运行：采集质检分数 / 误拦 / 延迟 / 调用次数（断点续跑 + 并发）"""
+def stage_gate(llm, data, workers=None):
+    """真实图运行：采集质检分数 / 误拦 / 延迟 / 调用次数（断点续跑）
+    默认串行：延迟指标必须反映单会话真实体验；并发会触发免费档限速、污染延迟数字。"""
     from concurrent.futures import ThreadPoolExecutor
+
+    if workers is None:
+        workers = int(os.getenv("GATE_WORKERS", "1"))
 
     cache = load_json(GATE_CACHE, {})
     in_scope = [

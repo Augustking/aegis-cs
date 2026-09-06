@@ -14,6 +14,13 @@ def test_parse_dims_full():
     assert dims == {"relevance": 3.0, "completeness": 1.0, "faithfulness": 1.0}
 
 
+def test_parse_flat_format():
+    """扁平 key=value 格式（7B 模型首选，嵌套 JSON 不可靠）"""
+    raw = "score=5; reason=部分解答; relevance=3; completeness=1; faithfulness=1"
+    assert parse_judge_output(raw) == (5.0, "部分解答")
+    assert parse_judge_dims(raw) == {"relevance": 3.0, "completeness": 1.0, "faithfulness": 1.0}
+
+
 def test_parse_dims_missing_or_garbage():
     """旧格式（无 dims）与垃圾输出都返回 None，主流程不受影响"""
     assert parse_judge_dims('{"score": 8, "reason": "ok"}') is None

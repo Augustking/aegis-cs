@@ -21,8 +21,8 @@ _JUDGE_SYSTEM_PROMPT = """你是客服回复质检员。请对"AI客服回复"�
 - 空泛套话、答非所问、明显未理解问题 → 3 分以下
 - 编造具体承诺（金额/时间/政策）→ 0-2 分
 
-只输出 JSON，不要输出任何其他内容：
-{"score": <0-10整数>, "reason": "<20字以内理由>", "dims": {"relevance": <0-4>, "completeness": <0-3>, "faithfulness": <0-3>}}"""
+只输出一行，格式如下（不要 JSON、不要换行、不要任何其他字符）：
+score=<0-10整数>; reason=<20字以内理由>; relevance=<0-4整数>; completeness=<0-3整数>; faithfulness=<0-3整数>"""
 
 
 def build_judge_messages(query: str, response: str, context: str = "") -> list:
@@ -45,12 +45,20 @@ def _extract_reason(text: str) -> str:
 
 
 def parse_judge_output(raw: object) -> Tuple[float, str]:
-    """解析 judge 输出为 (score, reason)；任何失败按 fail-open 返回 (10.0, 'parse_failed')。"""
+    """解析 judge 输出为 (score, reason)；支持 JSON 与扁平 key=value 两种格式，
+    任何失败按 fail-open 返回 (10.0, 'parse_failed')。"""
     if raw is None:
         return 10.0, "parse_failed"
     text = str(raw).strip()
     if not text:
         return 10.0, "parse_failed"
+    # 扁平格式：score=5; reason=...（7B 模型对嵌套 JSON 不可靠，首选扁平）
+    m = re.search(r'score\s*[:=]\s*(\d{1,2})', text, re.IGNORECASE)
+    if m:
+        reason_m = re.search(r'reason\s*[:=]\s*([^;\n]{0,100})', text, re.IGNORECASE)
+        reason = (reason_m.group(1).strip().strip('"') if reason_m else "flat_format")
+        return _clamp(float(m.group(1))), reason
+    # JSON 格式（兼容旧版本）
     try:
         data = json.loads(text)
         if isinstance(data, dict) and "score" in data:
@@ -73,19 +81,30 @@ _DIM_RANGES = {"relevance": (0.0, 4.0), "completeness": (0.0, 3.0), "faithfulnes
 
 
 def parse_judge_dims(raw: object) -> Optional[Dict[str, float]]:
-    """解析维度分；缺失或非法返回 None（兼容旧格式输出，不阻断主流程）。"""
+    """解析维度分；支持扁平 key=value 与 JSON 两种格式，缺失或非法返回 None。"""
     if raw is None:
         return None
     text = str(raw).strip()
     if not text:
         return None
+    dims: Dict[str, float] = {}
+    ok = True
+    for name, (lo, hi) in _DIM_RANGES.items():
+        m = re.search(name + r'\s*[:=]\s*(\d+(?:\.\d+)?)', text, re.IGNORECASE)
+        if not m:
+            ok = False
+            break
+        dims[name] = max(lo, min(hi, float(m.group(1))))
+    if ok:
+        return dims
+    # JSON 兼容（旧版本）
     try:
         data = json.loads(text)
     except (json.JSONDecodeError, ValueError):
         return None
     if not isinstance(data, dict) or not isinstance(data.get("dims"), dict):
         return None
-    dims: Dict[str, float] = {}
+    dims = {}
     for name, (lo, hi) in _DIM_RANGES.items():
         try:
             v = float(data["dims"][name])
