@@ -21,6 +21,16 @@ def test_parse_flat_format():
     assert parse_judge_dims(raw) == {"relevance": 3.0, "completeness": 1.0, "faithfulness": 1.0}
 
 
+def test_parse_dims_only_total_is_sum():
+    """judge 只输出维度分：总分 = 三维相加（0-4+0-3+0-3=0-10），不再让小模型自合成总分"""
+    raw = "relevance=4; completeness=3; faithfulness=3; reason=回复详细"
+    assert parse_judge_output(raw) == (10.0, "回复详细")
+    assert parse_judge_dims(raw) == {"relevance": 4.0, "completeness": 3.0, "faithfulness": 3.0}
+    # 维度分与自合成 score 冲突时，以维度合成为准（实测小模型 score 字段噪声大）
+    raw2 = "score=4; reason=x; relevance=4; completeness=3; faithfulness=3"
+    assert parse_judge_output(raw2)[0] == 10.0
+
+
 def test_parse_dims_missing_or_garbage():
     """旧格式（无 dims）与垃圾输出都返回 None，主流程不受影响"""
     assert parse_judge_dims('{"score": 8, "reason": "ok"}') is None
