@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from flask import Flask, render_template, request, jsonify, session, Response
+from flask import Flask, request, jsonify, session, Response, send_from_directory
 
 from chat_web_service import (
     run_chat_sync,
@@ -31,7 +31,8 @@ import ticket_store
 # 导入配置（与历史行为保持一致）
 from config import *  # noqa: E402,F401,F403
 
-app = Flask(__name__)
+DIST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "dist")
+app = Flask(__name__, static_folder=None)
 
 # Flask 配置
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "your-secret-key-here")
@@ -57,10 +58,24 @@ def add_conversation_message(session_id: str, role: str, content: str) -> None:
 
 @app.route('/')
 def index():
-    """主页"""
-    current_session_id = session.get('current_session_id', 'default')
-    conversation_history = get_conversation_history(current_session_id)
-    return render_template('index.html', conversation_history=conversation_history)
+    """SPA 入口；dist 未构建时给出提示"""
+    if os.path.isfile(os.path.join(DIST_DIR, "index.html")):
+        return send_from_directory(DIST_DIR, "index.html")
+    return "前端尚未构建：请在 frontend/ 目录执行 npm install && npm run build", 200, {
+        "Content-Type": "text/plain; charset=utf-8"
+    }
+
+
+@app.route('/<path:path>')
+def spa_assets_and_fallback(path):
+    """静态资源 + history 路由 fallback；显式 /api 路由优先级更高不会进入这里"""
+    if path.startswith("api/"):
+        return jsonify({'error': 'not found'}), 404
+    if os.path.isfile(os.path.join(DIST_DIR, path)):
+        return send_from_directory(DIST_DIR, path)
+    if os.path.isfile(os.path.join(DIST_DIR, "index.html")):
+        return send_from_directory(DIST_DIR, "index.html")
+    return jsonify({'error': 'not found'}), 404
 
 
 @app.route('/api/chat', methods=['POST'])
