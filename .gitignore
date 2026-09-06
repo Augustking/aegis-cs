@@ -393,3 +393,5 @@ tmp/
 # Frontend
 frontend/node_modules/
 frontend/dist/
+tickets.db-wal
+tickets.db-shm
