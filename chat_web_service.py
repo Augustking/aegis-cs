@@ -352,6 +352,7 @@ def fetch_session_detail(session_id: str) -> Tuple[Optional[Dict[str, Any]], Opt
 
         thread_data = response.json()
         conversation_history: List[Dict[str, Any]] = []
+        decision_trace: List[Dict[str, Any]] = []
 
         try:
             state_response = requests.get(
@@ -361,6 +362,9 @@ def fetch_session_detail(session_id: str) -> Tuple[Optional[Dict[str, Any]], Opt
             if state_response.status_code == 200:
                 state_data = state_response.json()
                 conversation_history = conversation_history_from_state_data(state_data)
+                decision_trace = list(
+                    (state_data.get("values") or {}).get("decision_trace") or []
+                )
             else:
                 print(f"⚠️ 获取线程状态失败: {state_response.status_code}")
         except Exception as e:
@@ -371,7 +375,8 @@ def fetch_session_detail(session_id: str) -> Tuple[Optional[Dict[str, Any]], Opt
         session_data = {
             "session_id": session_id,
             "created_at": thread_data.get("created_at", time.time()),
-            "conversation_history": conversation_history
+            "conversation_history": conversation_history,
+            "decision_trace": decision_trace,
         }
         return session_data, None
 

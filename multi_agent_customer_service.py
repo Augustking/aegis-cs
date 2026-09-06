@@ -72,6 +72,8 @@ class AgentState(TypedDict):
     quality_reason: str
     needs_human: bool
     ticket_id: str
+    # 每步决策快照（分类/质检/转人工/挂起/最终回复），checkpointer 持久化，供工作台回放
+    decision_trace: List[Any]
 
 # OpenAI兼容API客户端类
 class OpenAICompatibleClient:
@@ -267,6 +269,9 @@ def classify_query_node(state: AgentState) -> AgentState:
     if "needs_human" not in state:
         state["needs_human"] = False
 
+    if "decision_trace" not in state:
+        state["decision_trace"] = []
+
     if "messages" not in state:
         state["messages"] = []
 
@@ -291,6 +296,9 @@ def classify_query_node(state: AgentState) -> AgentState:
             pd.append({"content": str(customer_query), "is_user": True, "timestamp": now})
             pd.append({"content": SUSPENDED_REPLY, "is_user": False, "timestamp": now})
             state["persisted_dialogue"] = pd
+            state["decision_trace"] = list(state.get("decision_trace") or []) + [
+                {"step": "suspended", "timestamp": now}
+            ]
             return state
     except Exception as e:
         print(f"⚠️ 挂起检查失败（忽略并继续 AI 流程）: {e}")
@@ -313,6 +321,10 @@ def classify_query_node(state: AgentState) -> AgentState:
     # 更新状态
     state["query_type"] = query_type
     state["tools_used"].append("query_classification")
+    state["decision_trace"] = list(state.get("decision_trace") or []) + [
+        {"step": "classify", "query_type": query_type,
+         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+    ]
 
     # 写入由 checkpointer 持久化的对话（用户轮次）
     pd = list(state.get("persisted_dialogue") or [])
@@ -409,34 +421,38 @@ def _quality_threshold() -> float:
 
 def quality_check_node(state: AgentState) -> AgentState:
     """LLM-as-judge 给业务回复打 0-10 分；任何故障 fail-open 放行。"""
+    threshold = _quality_threshold()
     if not QUALITY_CHECK_ENABLED:
-        state["quality_score"] = 10.0
-        state["quality_reason"] = "quality_check_disabled"
-        return state
-
-    score, reason = 10.0, "quality_check_error"
-    try:
-        llm = get_llm()
-        if llm is None:
-            raise ValueError("LLM 不可用")
-        pd = list(state.get("persisted_dialogue") or [])
-        context = "\n".join(
-            f"{'用户' if m.get('is_user') else 'AI'}: {m.get('content', '')}"
-            for m in pd[-6:]
-        )
-        resp = llm.invoke(
-            build_judge_messages(
-                state.get("customer_query", ""), state.get("response", ""), context
+        score, reason = 10.0, "quality_check_disabled"
+    else:
+        score, reason = 10.0, "quality_check_error"
+        try:
+            llm = get_llm()
+            if llm is None:
+                raise ValueError("LLM 不可用")
+            pd = list(state.get("persisted_dialogue") or [])
+            context = "\n".join(
+                f"{'用户' if m.get('is_user') else 'AI'}: {m.get('content', '')}"
+                for m in pd[-6:]
             )
-        )
-        score, reason = parse_judge_output(getattr(resp, "content", ""))
-    except Exception as e:
-        print(f"⚠️ 质检失败，fail-open 放行: {e}")
+            resp = llm.invoke(
+                build_judge_messages(
+                    state.get("customer_query", ""), state.get("response", ""), context
+                )
+            )
+            score, reason = parse_judge_output(getattr(resp, "content", ""))
+        except Exception as e:
+            print(f"⚠️ 质检失败，fail-open 放行: {e}")
 
     state["quality_score"] = float(score)
     state["quality_reason"] = str(reason)
     state["tools_used"].append("quality_check")
-    print(f"🔍 质检得分 {score}（阈值 {_quality_threshold()}）：{reason}")
+    state["decision_trace"] = list(state.get("decision_trace") or []) + [
+        {"step": "quality_check", "score": float(score), "reason": str(reason),
+         "threshold": threshold,
+         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+    ]
+    print(f"🔍 质检得分 {score}（阈值 {threshold}）：{reason}")
     return state
 
 
@@ -471,6 +487,9 @@ def human_handoff_node(state: AgentState) -> AgentState:
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     pd.append({"content": HANDOFF_REPLY, "is_user": False, "timestamp": now})
     state["persisted_dialogue"] = pd
+    state["decision_trace"] = list(state.get("decision_trace") or []) + [
+        {"step": "handoff", "ticket_id": ticket_id, "timestamp": now}
+    ]
     print(f"🎫 已创建人工工单 {ticket_id}（质检 {state.get('quality_score')} 分）")
     return state
 
@@ -482,6 +501,10 @@ def final_response_node(state: AgentState) -> AgentState:
     response = state["response"]
 
     state["response"] = f"【{current_agent}'s Response】\n{response}"
+    state["decision_trace"] = list(state.get("decision_trace") or []) + [
+        {"step": "final_response", "agent": current_agent,
+         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+    ]
     return state
 
 # 图表入口点
