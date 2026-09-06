@@ -6,6 +6,7 @@
 from typing import Dict, List, Any
 from langchain_core.messages import HumanMessage, SystemMessage
 from .base_agent import BaseAgent
+from services.business_data import get_business_data
 
 class TechAgent(BaseAgent):
     def __init__(self):
@@ -15,28 +16,7 @@ class TechAgent(BaseAgent):
             expertise=["故障诊断", "系统优化", "软件配置", "硬件维修"]
         )
 
-        # TODO: 技术解决方案应该从知识库获取，这里只是模拟数据
-        # 实际应用中应该连接技术知识库或调用技术支持API服务
-        self.tech_database = {
-            "常见故障": {
-                "无法开机": "检查电源连接 → 长按电源键10秒 → 检查电池状态 → 联系技术支持",
-                "系统卡顿": "清理缓存 → 关闭后台应用 → 重启设备 → 系统优化",
-                "网络连接": "检查WiFi设置 → 重启路由器 → 检查网络配置 → 联系网络服务商",
-                "软件崩溃": "强制关闭应用 → 清除应用数据 → 重新安装 → 检查系统兼容性"
-            },
-            "系统优化": {
-                "性能提升": "清理垃圾文件 → 优化启动项 → 更新驱动程序 → 系统维护",
-                "存储管理": "删除无用文件 → 清理下载文件夹 → 使用云存储 → 定期备份",
-                "安全设置": "更新安全补丁 → 配置防火墙 → 安装杀毒软件 → 定期扫描",
-                "电池优化": "调整屏幕亮度 → 关闭无用功能 → 优化应用设置 → 检查电池健康"
-            },
-            "硬件问题": {
-                "屏幕问题": "检查连接线 → 更新显卡驱动 → 调整分辨率 → 联系维修",
-                "声音问题": "检查音频设置 → 测试不同设备 → 更新音频驱动 → 硬件检测",
-                "散热问题": "清理灰尘 → 检查风扇 → 优化使用环境 → 更换散热器",
-                "接口故障": "检查连接 → 测试不同设备 → 更新驱动 → 硬件维修"
-            }
-        }
+        self.tech_database = get_business_data("tech")
 
     def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """处理技术支持查询"""
@@ -48,6 +28,8 @@ class TechAgent(BaseAgent):
 
         # 从技术数据库中匹配相关信息
         matched_info = self._match_tech_info(customer_query)
+        # 证据上下文：供质检节点做接地质检（grounded judging）
+        state["evidence_context"] = matched_info
 
         # 构建系统提示并增强对话上下文说明
         base_system_prompt = f"""你是{self.name}，专门负责{self.role}。

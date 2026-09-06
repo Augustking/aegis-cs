@@ -47,8 +47,15 @@ class _OOSLLM(FakeLLM):
 @pytest.fixture()
 def graph_env(monkeypatch, tmp_path):
     monkeypatch.setenv("TICKET_DB_PATH", str(tmp_path / "tickets.db"))
-    monkeypatch.setattr(svc, "get_llm", lambda: FakeLLM())
+    _patch_llm(monkeypatch, FakeLLM())
     return tmp_path
+
+
+def _patch_llm(monkeypatch, llm):
+    """T3/T6 后图内分类/质检走独立 getter，测试必须全部打桩，否则会打真实 API"""
+    monkeypatch.setattr(svc, "get_llm", lambda: llm)
+    monkeypatch.setattr(svc, "get_classify_llm", lambda: llm)
+    monkeypatch.setattr(svc, "get_judge_llm", lambda: llm)
 
 
 def _invoke(session_id, query="帮我查退款进度"):
@@ -68,9 +75,7 @@ def test_high_score_passes(graph_env):
 
 
 def test_low_score_goes_handoff(graph_env, monkeypatch):
-    monkeypatch.setattr(
-        svc, "get_llm", lambda: FakeLLM(judge_json='{"score": 2, "reason": "答非所问"}')
-    )
+    _patch_llm(monkeypatch, FakeLLM(judge_json='{"score": 2, "reason": "答非所问"}'))
     state = _invoke("t-low")
     assert state["needs_human"] is True
     assert state["quality_score"] == 2.0
@@ -99,7 +104,7 @@ def test_suspended_thread_short_circuits(graph_env):
 
 
 def test_out_of_scope_skips_quality_check(graph_env, monkeypatch):
-    monkeypatch.setattr(svc, "get_llm", lambda: _OOSLLM())
+    _patch_llm(monkeypatch, _OOSLLM())
     state = _invoke("t-oos", query="给我写一首诗")
     assert state["query_type"] == "out_of_scope"
     assert state.get("quality_score") is None  # 未经过质检节点
@@ -107,9 +112,7 @@ def test_out_of_scope_skips_quality_check(graph_env, monkeypatch):
 
 def test_handoff_withdraws_draft_from_transcript(graph_env, monkeypatch):
     """被驳回的草稿不下发用户：对话记录里只有转接话术，没有业务智能体原话。"""
-    monkeypatch.setattr(
-        svc, "get_llm", lambda: FakeLLM(judge_json='{"score": 2, "reason": "答非所问"}')
-    )
+    _patch_llm(monkeypatch, FakeLLM(judge_json='{"score": 2, "reason": "答非所问"}'))
     state = _invoke("t-withdraw")
     pd = state["persisted_dialogue"]
     assistant_turns = [m["content"] for m in pd if not m["is_user"]]

@@ -21,10 +21,23 @@ CREATE TABLE IF NOT EXISTS tickets (
     status         TEXT NOT NULL DEFAULT 'open',
     created_at     TEXT NOT NULL,
     resolved_at    TEXT,
-    human_reply    TEXT
+    human_reply    TEXT,
+    quality_dims   TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_tickets_thread_status ON tickets(thread_id, status);
 """
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """老库补列：quality_dims（T5 质检三维评分）；表不存在时跳过（建表语句已含）。"""
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='tickets'"
+    ).fetchone()
+    if not exists:
+        return
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(tickets)")}
+    if "quality_dims" not in cols:
+        conn.execute("ALTER TABLE tickets ADD COLUMN quality_dims TEXT")
 
 
 def _db_path() -> str:
@@ -38,6 +51,7 @@ def _connect() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA journal_mode=WAL")
+    _migrate(conn)
     return conn
 
 
@@ -51,17 +65,21 @@ def create_ticket(
     draft_reply: str,
     quality_score: float,
     quality_reason: str,
+    quality_dims: Optional[Dict[str, float]] = None,
 ) -> str:
-    """创建 open 状态工单，返回工单 id。"""
+    """创建 open 状态工单，返回工单 id。quality_dims 为三维评分字典（可选）。"""
+    import json as _json
+
     ticket_id = str(uuid.uuid4())
+    dims_json = _json.dumps(quality_dims, ensure_ascii=False) if quality_dims else None
     with _connect() as conn:
         conn.executescript(_SCHEMA)
         conn.execute(
             "INSERT INTO tickets (id, thread_id, user_query, draft_reply,"
-            " quality_score, quality_reason, status, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, 'open', ?)",
+            " quality_score, quality_reason, status, created_at, quality_dims)"
+            " VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?)",
             (ticket_id, thread_id, user_query, draft_reply,
-             float(quality_score), quality_reason, _now()),
+             float(quality_score), quality_reason, _now(), dims_json),
         )
     return ticket_id
 

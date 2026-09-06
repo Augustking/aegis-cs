@@ -30,7 +30,7 @@ from multi_agents import (
     ProductAgent, TechAgent, BillingAgent,
     ComplaintAgent, GeneralAgent
 )
-from tools import classify_query, build_judge_messages, parse_judge_output
+from tools import classify_query, build_judge_messages, parse_judge_dims, parse_judge_output
 import ticket_store
 
 # 导入会话管理器
@@ -70,8 +70,11 @@ class AgentState(TypedDict):
     # —— 质检与人工接管（quality_check / human_handoff 节点写入）——
     quality_score: float
     quality_reason: str
+    quality_dims: Dict[str, float]
     needs_human: bool
     ticket_id: str
+    # 业务 Agent 检索到的数据上下文，供质检节点做接地质检
+    evidence_context: str
     # 每步决策快照（分类/质检/转人工/挂起/最终回复），checkpointer 持久化，供工作台回放
     decision_trace: List[Any]
 
@@ -96,6 +99,8 @@ class OpenAICompatibleClient:
         self.inheritable_handlers = []
         self.inheritable_tags = []
         self.inheritable_metadata = {}
+        # 附加请求参数（如 Qwen3 系的 enable_thinking）
+        self.extra_body = {}
 
     def invoke(self, messages):
         """调用OpenAI兼容API"""
@@ -124,7 +129,8 @@ class OpenAICompatibleClient:
         # 构建请求payload
         payload = {
             "model": self.model,
-            "messages": formatted_messages
+            "messages": formatted_messages,
+            **self.extra_body,
         }
 
         # 添加调试信息
@@ -188,6 +194,9 @@ session_manager = default_session_manager
 
 # 延迟初始化LLM
 _llm_instance = None
+_classify_llm_instance = None
+_judge_llm_instance = None
+
 
 def initialize_llm_client():
     """初始化OpenAI兼容API客户端"""
@@ -199,6 +208,45 @@ def initialize_llm_client():
         base_url=OPENAI_BASE_URL,
         model=OPENAI_MODEL
     )
+
+
+def get_judge_llm():
+    """质检 judge 用 LLM：JUDGE_MODEL 可指定更强模型（judge 区分度直接决定质检有效性），
+    独立超时容忍推理型模型的较长响应；Qwen3 系默认关闭思维链。"""
+    global _judge_llm_instance
+    if _judge_llm_instance is None:
+        if not OPENAI_API_KEY:
+            print("❌ 错误: API密钥未设置，无法初始化质检 LLM")
+            return None
+        model = JUDGE_MODEL or OPENAI_MODEL
+        client = OpenAICompatibleClient(
+            api_key=OPENAI_API_KEY,
+            base_url=OPENAI_BASE_URL,
+            model=model,
+        )
+        client.timeout = JUDGE_TIMEOUT
+        if "qwen3" in model.lower():
+            client.extra_body = {"enable_thinking": False}
+        _judge_llm_instance = client
+        print(f"✅ 质检 LLM 就绪（{model}，超时 {JUDGE_TIMEOUT}s）")
+    return _judge_llm_instance
+
+
+def get_classify_llm():
+    """意图分类用 LLM：CLASSIFY_MODEL 可指定轻量模型降延迟降成本，缺省与主模型一致。"""
+    global _classify_llm_instance
+    if _classify_llm_instance is None:
+        if not OPENAI_API_KEY:
+            print("❌ 错误: API密钥未设置，无法初始化分类 LLM")
+            return None
+        model = CLASSIFY_MODEL or OPENAI_MODEL
+        _classify_llm_instance = OpenAICompatibleClient(
+            api_key=OPENAI_API_KEY,
+            base_url=OPENAI_BASE_URL,
+            model=model,
+        )
+        print(f"✅ 分类 LLM 就绪（{model}）")
+    return _classify_llm_instance
 
 def get_llm():
     """获取LLM实例，延迟初始化"""
@@ -305,7 +353,7 @@ def classify_query_node(state: AgentState) -> AgentState:
 
     # 使用分类工具
     try:
-        llm_instance = get_llm()
+        llm_instance = get_classify_llm() or get_llm()
         # 使用正确的工具调用方式
         try:
             result = classify_query.invoke({"query": customer_query, "llm": llm_instance})
@@ -419,15 +467,26 @@ def _quality_threshold() -> float:
     return threshold
 
 
+def _fallback_dims(score: float) -> Dict[str, float]:
+    """judge 未按新格式输出维度分时，按总分比例兜底（0-4/0-3/0-3）。"""
+    s = max(0.0, min(10.0, float(score)))
+    return {
+        "relevance": round(s * 0.4, 1),
+        "completeness": round(s * 0.3, 1),
+        "faithfulness": round(s * 0.3, 1),
+    }
+
+
 def quality_check_node(state: AgentState) -> AgentState:
-    """LLM-as-judge 给业务回复打 0-10 分；任何故障 fail-open 放行。"""
+    """LLM-as-judge 给业务回复打 0-10 分 + 三维子分；任何故障 fail-open 放行。"""
     threshold = _quality_threshold()
+    dims = _fallback_dims(10.0)
     if not QUALITY_CHECK_ENABLED:
         score, reason = 10.0, "quality_check_disabled"
     else:
         score, reason = 10.0, "quality_check_error"
         try:
-            llm = get_llm()
+            llm = get_judge_llm() or get_llm()
             if llm is None:
                 raise ValueError("LLM 不可用")
             pd = list(state.get("persisted_dialogue") or [])
@@ -437,40 +496,65 @@ def quality_check_node(state: AgentState) -> AgentState:
             )
             resp = llm.invoke(
                 build_judge_messages(
-                    state.get("customer_query", ""), state.get("response", ""), context
+                    state.get("customer_query", ""), state.get("response", ""), context,
+                    evidence=str(state.get("evidence_context") or ""),
                 )
             )
-            score, reason = parse_judge_output(getattr(resp, "content", ""))
+            raw = getattr(resp, "content", "")
+            score, reason = parse_judge_output(raw)
+            dims = parse_judge_dims(raw) or _fallback_dims(score)
         except Exception as e:
             print(f"⚠️ 质检失败，fail-open 放行: {e}")
 
     state["quality_score"] = float(score)
     state["quality_reason"] = str(reason)
+    state["quality_dims"] = dims
     state["tools_used"].append("quality_check")
+    if dims.get("faithfulness", 3.0) <= 0:
+        # 可信度否决的标注要在节点内写（条件边拿到的是状态副本，写不进持久状态）
+        state["quality_reason"] = f"faithfulness_veto: {state['quality_reason']}"[:100]
     state["decision_trace"] = list(state.get("decision_trace") or []) + [
         {"step": "quality_check", "score": float(score), "reason": str(reason),
-         "threshold": threshold,
+         "threshold": threshold, "dims": dims,
          "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
     ]
-    print(f"🔍 质检得分 {score}（阈值 {threshold}）：{reason}")
+    print(f"🔍 质检得分 {score}（阈值 {threshold}）维度 {dims}：{reason}")
     return state
 
 
 def route_after_quality_check(state: AgentState) -> str:
-    return "handoff" if state.get("quality_score", 10.0) < _quality_threshold() else "pass"
+    """放行/转人工路由：总分低于阈值，或可信度一票否决（编造一票不过，不看总分）。"""
+    if state.get("quality_score", 10.0) < _quality_threshold():
+        return "handoff"
+    dims = state.get("quality_dims") or {}
+    if dims.get("faithfulness", 3.0) <= 0:
+        state["quality_reason"] = f"faithfulness_veto: {state.get('quality_reason', '')}"[:100]
+        return "handoff"
+    return "pass"
 
 
 def human_handoff_node(state: AgentState) -> AgentState:
     """低分回复转人工：原始回答作为草稿落工单，线程进入挂起，用户收固定话术。"""
     ticket_id = ""
     try:
-        ticket_id = ticket_store.create_ticket(
-            thread_id=str(state.get("session_id", "")),
-            user_query=state.get("customer_query", ""),
-            draft_reply=state.get("response", ""),
-            quality_score=state.get("quality_score", 0.0),
-            quality_reason=state.get("quality_reason", ""),
+        sid = str(state.get("session_id", ""))
+        existing = next(
+            (t for t in ticket_store.list_tickets(status="open") if t["thread_id"] == sid),
+            None,
         )
+        if existing:
+            # 挂起检查失效等异常场景下可能重复进入：复用已有工单，不重复建单
+            ticket_id = existing["id"]
+            print(f"⚠️ 会话 {sid} 已有 open 工单，复用 {ticket_id}")
+        else:
+            ticket_id = ticket_store.create_ticket(
+                thread_id=sid,
+                user_query=state.get("customer_query", ""),
+                draft_reply=state.get("response", ""),
+                quality_score=state.get("quality_score", 0.0),
+                quality_reason=state.get("quality_reason", ""),
+                quality_dims=state.get("quality_dims"),
+            )
     except Exception as e:
         print(f"❌ 工单落库失败（转接话术照常回复）: {e}")
 

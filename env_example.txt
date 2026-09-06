@@ -22,6 +22,18 @@ FLASK_SECRET_KEY=your-secret-key-here
 # LANGGRAPH_API_URL=http://127.0.0.1:2024
 # LANGGRAPH_GRAPH_NAME=customer_service
 
+# ===== Quality check & human handoff =====
+# 质检放行阈值（0-10），低于即转人工；单次请求可用 configurable.quality_threshold 覆盖
+QUALITY_THRESHOLD=8.0
+# 质检开关（false 时全部放行）
+QUALITY_CHECK_ENABLED=true
+# 意图分类专用模型（可选轻量档降延迟降成本）；留空与 OPENAI_MODEL 一致
+# CLASSIFY_MODEL=Qwen/Qwen2.5-7B-Instruct
+
+# ===== Chat run wait limit =====
+# 单轮对话等待上限（秒），超时降级为落工单 + 转人工话术
+RUN_WAIT_LIMIT=90
+
 # ===== Notes =====
 
 # 1. API key
@@ -43,3 +55,5 @@ FLASK_SECRET_KEY=your-secret-key-here
 
 # Windows: if `langgraph dev` fails loading .env with UnicodeDecodeError, keep comments
 # ASCII-only (as here) or save .env as UTF-8 with BOM.
+# JUDGE_MODEL=Qwen/Qwen3-8B
+# JUDGE_TIMEOUT=120

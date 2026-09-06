@@ -26,6 +26,14 @@ load_dotenv()
 LANGGRAPH_API_URL: str = os.getenv("LANGGRAPH_API_URL", "http://127.0.0.1:2024").rstrip("/")
 LANGGRAPH_GRAPH_NAME: str = os.getenv("LANGGRAPH_GRAPH_NAME", "customer_service")
 
+# 单轮对话等待上限（秒）；超时不再返回 500，而是降级为落工单 + 转人工话术
+RUN_WAIT_LIMIT: int = int(os.getenv("RUN_WAIT_LIMIT", "90"))
+
+# 超时降级时给用户的固定话术（与图内 HANDOFF_REPLY 语义一致）
+TIMEOUT_HANDOFF_REPLY = (
+    "抱歉，当前咨询量较大，您的问题已转人工客服处理，客服专员会尽快回复，请稍候。"
+)
+
 # LangGraph SDK 侧的助手与当前线程缓存（与原 web_app 行为一致）
 _assistant_id: Optional[str] = None
 _current_thread_id: Optional[str] = None
@@ -420,6 +428,22 @@ def clear_thread_and_create_new(thread_id: str) -> Tuple[Optional[str], Optional
 # 一次聊天运行（阻塞轮询）
 # -----------------------------------------------------------------------------
 
+def handle_run_timeout(thread_id: str, user_message: str) -> str:
+    """运行超时降级：落工单（幂等）并返回转人工话术，不再向上抛 500。"""
+    try:
+        if not ticket_store.has_open_ticket(thread_id):
+            ticket_store.create_ticket(
+                thread_id=thread_id,
+                user_query=user_message,
+                draft_reply="（运行超时，AI 未在时限内完成应答，无草稿）",
+                quality_score=0.0,
+                quality_reason="run_timeout",
+            )
+    except Exception as e:
+        print(f"❌ 超时落工单失败（话术照常返回）: {e}")
+    return TIMEOUT_HANDOFF_REPLY
+
+
 def run_chat_sync(user_message: str, client_session_id: Optional[str] = None) -> Tuple[Optional[str], Optional[str], Optional[int]]:
     """
     在当前线程上提交一轮用户消息并等待完成。
@@ -466,13 +490,12 @@ def run_chat_sync(user_message: str, client_session_id: Optional[str] = None) ->
         run_id = result["run_id"]
 
         run_status = "running"
-        max_wait_time = 120
         wait_start = time.time()
 
         while run_status in ["running", "pending"]:
-            if time.time() - wait_start > max_wait_time:
-                print(f"⚠️ 运行超时，已等待 {max_wait_time} 秒")
-                return None, '运行超时', 500
+            if time.time() - wait_start > RUN_WAIT_LIMIT:
+                print(f"⚠️ 运行超时（>{RUN_WAIT_LIMIT}s），降级为转人工工单")
+                return handle_run_timeout(_current_thread_id, user_message.strip()), None, None
 
             time.sleep(0.5)
             status_response = requests.get(
@@ -503,7 +526,7 @@ def run_chat_sync(user_message: str, client_session_id: Optional[str] = None) ->
                 print(f"❌ 运行失败: {run_status}")
                 return None, f'运行失败: {run_status}', 500
 
-        return None, '运行超时', 500
+        return None, '运行状态轮询失败', 500
 
     except Exception as e:
         print(f"❌ 聊天处理错误: {e}")
@@ -564,7 +587,11 @@ def stream_chat_events(user_message: str, client_session_id: Optional[str] = Non
 
         tid = _current_thread_id
         run_status = "running"
+        wait_start = time.time()
         while run_status in ["running", "pending"]:
+            if time.time() - wait_start > RUN_WAIT_LIMIT:
+                yield f"data: {json.dumps({'content': handle_run_timeout(tid, user_message.strip()), 'timeout_handoff': True, 'session_id': tid, 'thread_id': tid}, ensure_ascii=False)}\n\n"
+                break
             time.sleep(0.5)
             status_response = requests.get(
                 f"{LANGGRAPH_API_URL}/threads/{tid}/runs/{run_id}",

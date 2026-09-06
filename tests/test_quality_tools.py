@@ -37,3 +37,12 @@ def test_build_judge_messages():
     # 无上下文时不出现空段落
     no_context = build_judge_messages("查退款", "回复")
     assert "对话历史上下文" not in no_context[1].content
+
+
+def test_build_judge_messages_carries_evidence():
+    """接地质检：证据随消息下发，无证据时不出现空段落"""
+    msgs = build_judge_messages("查退款", "回复", evidence="【退款政策】3-5个工作日到账")
+    assert "业务数据证据" in msgs[1].content
+    assert "3-5个工作日" in msgs[1].content
+    no_ev = build_judge_messages("查退款", "回复")
+    assert "业务数据证据" not in no_ev[1].content

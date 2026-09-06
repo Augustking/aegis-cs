@@ -6,6 +6,7 @@
 from typing import Dict, List, Any
 from langchain_core.messages import HumanMessage, SystemMessage
 from .base_agent import BaseAgent
+from services.business_data import get_business_data
 
 class BillingAgent(BaseAgent):
     def __init__(self):
@@ -15,28 +16,7 @@ class BillingAgent(BaseAgent):
             expertise=["退款处理", "发票管理", "价格计算", "支付问题"]
         )
 
-        # TODO: 账单信息应该从财务系统获取，这里只是模拟数据
-        # 实际应用中应该连接财务数据库或调用财务API服务
-        self.billing_database = {
-            "退款政策": {
-                "7天无理由退款": "购买后7天内，未使用且包装完整可申请退款",
-                "质量问题退款": "产品存在质量问题，30天内可申请退款",
-                "退款流程": "提交申请 → 审核确认 → 3-5个工作日到账",
-                "所需材料": "订单号、购买凭证、问题描述"
-            },
-            "发票服务": {
-                "电子发票": "订单完成后自动生成，发送至注册邮箱",
-                "纸质发票": "可申请纸质发票，邮寄费用客户承担",
-                "发票抬头": "支持个人和企业抬头，可修改",
-                "开具时间": "订单完成后1-3个工作日"
-            },
-            "支付方式": {
-                "在线支付": "支持支付宝、微信、银行卡等多种方式",
-                "分期付款": "支持3/6/12期分期，手续费率2.5%-5%",
-                "企业采购": "支持对公转账，提供企业发票",
-                "支付安全": "采用银行级加密，保障资金安全"
-            }
-        }
+        self.billing_database = get_business_data("billing")
 
     def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """处理账单相关查询"""
@@ -48,6 +28,8 @@ class BillingAgent(BaseAgent):
 
         # 从账单数据库中匹配相关信息
         matched_info = self._match_billing_info(customer_query)
+        # 证据上下文：供质检节点做接地质检（grounded judging）
+        state["evidence_context"] = matched_info
 
         # 构建系统提示并增强对话上下文说明
         base_system_prompt = f"""你是{self.name}，专门负责{self.role}。
