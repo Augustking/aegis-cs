@@ -195,7 +195,8 @@ def handle_run_timeout(thread_id: str, user_message: str) -> str:
 # 一次聊天运行（图直连 + 超时降级）
 # -----------------------------------------------------------------------------
 
-def run_chat_sync(user_message: str, client_session_id: Optional[str] = None) -> Tuple[Optional[str], Optional[str], Optional[int], Optional[str]]:
+def run_chat_sync(user_message: str, client_session_id: Optional[str] = None,
+                  configurable: Optional[Dict[str, Any]] = None) -> Tuple[Optional[str], Optional[str], Optional[int], Optional[str]]:
     """
     在指定线程上执行一轮对话（图直连）。
     返回 (ai_text, error_text, http_status, thread_id)；超时时 ai_text 为降级话术、
@@ -209,7 +210,7 @@ def run_chat_sync(user_message: str, client_session_id: Optional[str] = None) ->
     _current_thread_id = thread_id
 
     ai_text, err, code = graph_runtime.run_in_thread(
-        thread_id, user_message.strip(), RUN_WAIT_LIMIT
+        thread_id, user_message.strip(), RUN_WAIT_LIMIT, configurable
     )
     if err == "run_timeout":
         return handle_run_timeout(thread_id, user_message.strip()), "run_timeout", 504, thread_id
@@ -290,7 +291,7 @@ def langgraph_connectivity_test() -> Tuple[Optional[Dict[str, Any]], Optional[st
     """健康自检：图编译 + 工单库可用性（嵌入模式）。"""
     try:
         graph_ok = graph_runtime.get_app() is not None
-        ticket_ok = isinstance(ticket_store.list_tickets(), list)
+        ticket_ok = isinstance(ticket_store.list_tickets(), dict)
         return ({
             'status': 'test_completed',
             'mode': 'embedded',

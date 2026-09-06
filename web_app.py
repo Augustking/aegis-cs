@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from flask import Flask, request, jsonify, session, Response, send_from_directory
+from flask import Flask, g, request, jsonify, session, Response, send_from_directory
 
 from chat_web_service import (
     run_chat_sync,
@@ -70,18 +70,24 @@ def require_agent(fn):
 
 
 def get_visitor_id():
-    """访客身份：cookie 缺失时生成并回写。客户会话隔离的根。"""
+    """访客身份：cookie 缺失时生成本请求内固定的新 ID（g 缓存）。
+    必须请求内单例——多处调用若各自随机，绑定归属与下发 cookie 会不一致。"""
+    if 'visitor_id' in g:
+        return g.visitor_id
     vid = request.cookies.get('visitor_id')
     if not vid:
         vid = auth_store.new_visitor_id()
+    g.visitor_id = vid
+    g.visitor_is_new = not bool(request.cookies.get('visitor_id'))
     return vid
 
 
 def visitor_response(payload, status=200):
+    get_visitor_id()  # 确保本请求已解析访客身份
     resp = jsonify(payload)
     resp.status_code = status
-    if not request.cookies.get('visitor_id'):
-        resp.set_cookie('visitor_id', get_visitor_id(), httponly=True, samesite='Lax', max_age=90 * 86400)
+    if getattr(g, 'visitor_is_new', False):
+        resp.set_cookie('visitor_id', g.visitor_id, httponly=True, samesite='Lax', max_age=90 * 86400)
     return resp
 
 
@@ -236,7 +242,9 @@ def chat():
         data = request.get_json() or {}
         user_message = (data.get('message') or '').strip()
         client_session_id = data.get('session_id') or None
-        ai_text, err_msg, http_code, tid = run_chat_sync(user_message, client_session_id)
+        threshold = data.get('quality_threshold')
+        configurable = {'quality_threshold': threshold} if threshold is not None else None
+        ai_text, err_msg, http_code, tid = run_chat_sync(user_message, client_session_id, configurable)
         if err_msg == 'run_timeout':
             return jsonify({'response': ai_text, 'session_id': tid, 'thread_id': tid,
                             'timeout_handoff': True})
