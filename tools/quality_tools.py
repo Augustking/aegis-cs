@@ -14,19 +14,26 @@ _JUDGE_SYSTEM_PROMPT = """你是客服回复质检员。请从三个维度对"AI
 维度定义：
 1. relevance（相关性）：是否针对用户的最新问题（0-4 分）
 2. completeness（解答度）：是否实际解答诉求，还是空泛敷衍（0-3 分）
-3. faithfulness（可信度）：是否编造信息、与上下文矛盾、包含明显错误（0-3 分）
+3. faithfulness（可信度）：回复中的具体数字、时间、金额、政策条款是否与"业务数据证据"一致（0-3 分）
 
-判定口径：
+faithfulness 判定规则（最重要）：
+- 业务数据证据中没有依据的具体承诺（到账时间、库存、订单状态等）→ faithfulness 计 0 分
+- 回复明确表示"需要人工核实"、未给出无依据的具体信息 → faithfulness 计 3 分
+- 引用证据中的政策/流程，且与证据一致 → faithfulness 计 3 分
+
+relevance/completeness 判定口径：
 - 回答了问题但需要用户补充信息 → completeness 至少 2 分
 - 空泛套话、答非所问、明显未理解问题 → 各维度合计不超过 3 分
-- 编造具体承诺（金额/时间/政策）→ faithfulness 计 0 分
 
 只输出一行，格式如下（不要 JSON、不要换行、不要输出总分）：
 relevance=<0-4整数>; completeness=<0-3整数>; faithfulness=<0-3整数>; reason=<20字以内理由>"""
 
 
-def build_judge_messages(query: str, response: str, context: str = "") -> list:
+def build_judge_messages(query: str, response: str, context: str = "", evidence: str = "") -> list:
+    """构建 judge 消息；evidence 为业务 Agent 检索到的数据上下文（接地质检的关键输入）。"""
     user_content = f"用户最新问题：{query}\n\nAI客服回复：{response}"
+    if evidence:
+        user_content += f"\n\n业务数据证据（faithfulness 必须对照此证据判定）：\n{evidence}"
     if context:
         user_content = f"对话历史上下文：\n{context}\n\n{user_content}"
     return [

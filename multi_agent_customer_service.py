@@ -73,6 +73,8 @@ class AgentState(TypedDict):
     quality_dims: Dict[str, float]
     needs_human: bool
     ticket_id: str
+    # 业务 Agent 检索到的数据上下文，供质检节点做接地质检
+    evidence_context: str
     # 每步决策快照（分类/质检/转人工/挂起/最终回复），checkpointer 持久化，供工作台回放
     decision_trace: List[Any]
 
@@ -97,6 +99,8 @@ class OpenAICompatibleClient:
         self.inheritable_handlers = []
         self.inheritable_tags = []
         self.inheritable_metadata = {}
+        # 附加请求参数（如 Qwen3 系的 enable_thinking）
+        self.extra_body = {}
 
     def invoke(self, messages):
         """调用OpenAI兼容API"""
@@ -125,7 +129,8 @@ class OpenAICompatibleClient:
         # 构建请求payload
         payload = {
             "model": self.model,
-            "messages": formatted_messages
+            "messages": formatted_messages,
+            **self.extra_body,
         }
 
         # 添加调试信息
@@ -190,6 +195,7 @@ session_manager = default_session_manager
 # 延迟初始化LLM
 _llm_instance = None
 _classify_llm_instance = None
+_judge_llm_instance = None
 
 
 def initialize_llm_client():
@@ -202,6 +208,28 @@ def initialize_llm_client():
         base_url=OPENAI_BASE_URL,
         model=OPENAI_MODEL
     )
+
+
+def get_judge_llm():
+    """质检 judge 用 LLM：JUDGE_MODEL 可指定更强模型（judge 区分度直接决定质检有效性），
+    独立超时容忍推理型模型的较长响应；Qwen3 系默认关闭思维链。"""
+    global _judge_llm_instance
+    if _judge_llm_instance is None:
+        if not OPENAI_API_KEY:
+            print("❌ 错误: API密钥未设置，无法初始化质检 LLM")
+            return None
+        model = JUDGE_MODEL or OPENAI_MODEL
+        client = OpenAICompatibleClient(
+            api_key=OPENAI_API_KEY,
+            base_url=OPENAI_BASE_URL,
+            model=model,
+        )
+        client.timeout = JUDGE_TIMEOUT
+        if "qwen3" in model.lower():
+            client.extra_body = {"enable_thinking": False}
+        _judge_llm_instance = client
+        print(f"✅ 质检 LLM 就绪（{model}，超时 {JUDGE_TIMEOUT}s）")
+    return _judge_llm_instance
 
 
 def get_classify_llm():
@@ -458,7 +486,7 @@ def quality_check_node(state: AgentState) -> AgentState:
     else:
         score, reason = 10.0, "quality_check_error"
         try:
-            llm = get_llm()
+            llm = get_judge_llm() or get_llm()
             if llm is None:
                 raise ValueError("LLM 不可用")
             pd = list(state.get("persisted_dialogue") or [])
@@ -468,7 +496,8 @@ def quality_check_node(state: AgentState) -> AgentState:
             )
             resp = llm.invoke(
                 build_judge_messages(
-                    state.get("customer_query", ""), state.get("response", ""), context
+                    state.get("customer_query", ""), state.get("response", ""), context,
+                    evidence=str(state.get("evidence_context") or ""),
                 )
             )
             raw = getattr(resp, "content", "")
@@ -481,6 +510,9 @@ def quality_check_node(state: AgentState) -> AgentState:
     state["quality_reason"] = str(reason)
     state["quality_dims"] = dims
     state["tools_used"].append("quality_check")
+    if dims.get("faithfulness", 3.0) <= 0:
+        # 可信度否决的标注要在节点内写（条件边拿到的是状态副本，写不进持久状态）
+        state["quality_reason"] = f"faithfulness_veto: {state['quality_reason']}"[:100]
     state["decision_trace"] = list(state.get("decision_trace") or []) + [
         {"step": "quality_check", "score": float(score), "reason": str(reason),
          "threshold": threshold, "dims": dims,
@@ -491,7 +523,14 @@ def quality_check_node(state: AgentState) -> AgentState:
 
 
 def route_after_quality_check(state: AgentState) -> str:
-    return "handoff" if state.get("quality_score", 10.0) < _quality_threshold() else "pass"
+    """放行/转人工路由：总分低于阈值，或可信度一票否决（编造一票不过，不看总分）。"""
+    if state.get("quality_score", 10.0) < _quality_threshold():
+        return "handoff"
+    dims = state.get("quality_dims") or {}
+    if dims.get("faithfulness", 3.0) <= 0:
+        state["quality_reason"] = f"faithfulness_veto: {state.get('quality_reason', '')}"[:100]
+        return "handoff"
+    return "pass"
 
 
 def human_handoff_node(state: AgentState) -> AgentState:

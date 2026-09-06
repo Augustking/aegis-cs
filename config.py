@@ -33,6 +33,10 @@ QUALITY_THRESHOLD = float(os.getenv("QUALITY_THRESHOLD", "6.0"))
 # 意图分类专用模型（可选轻量档，降延迟降成本）；留空与 OPENAI_MODEL 一致
 CLASSIFY_MODEL = os.getenv("CLASSIFY_MODEL", "")
 
+# 质检 judge 专用模型（建议用指令遵循更强的一档）与超时（秒）
+JUDGE_MODEL = os.getenv("JUDGE_MODEL", "")
+JUDGE_TIMEOUT = int(os.getenv("JUDGE_TIMEOUT", "120"))
+
 # 日志配置
 LOG_CONFIG = {
     "level": os.getenv("LOG_LEVEL", "INFO"),

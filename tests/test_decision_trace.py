@@ -3,19 +3,17 @@
 import pytest
 
 import multi_agent_customer_service as svc
-from tests.test_graph_quality import FakeLLM, _FakeResp
+from tests.test_graph_quality import FakeLLM, _FakeResp, _patch_llm
 
 
 @pytest.fixture()
 def graph_env(monkeypatch, tmp_path):
     monkeypatch.setenv("TICKET_DB_PATH", str(tmp_path / "tickets.db"))
-    monkeypatch.setattr(svc, "get_llm", lambda: FakeLLM())
+    _patch_llm(monkeypatch, FakeLLM())
     return tmp_path
 
 
 def _invoke(session_id, query="帮我查退款进度", llm=None):
-    if llm is not None:
-        svc.get_llm = lambda: llm
     app = svc.make_graph()
     return app.invoke({"customer_query": query, "session_id": session_id})
 
@@ -31,9 +29,7 @@ def test_trace_pass_path(graph_env):
 
 
 def test_trace_handoff_then_suspended(graph_env, monkeypatch):
-    monkeypatch.setattr(
-        svc, "get_llm", lambda: FakeLLM(judge_json='{"score": 2, "reason": "差"}')
-    )
+    _patch_llm(monkeypatch, FakeLLM(judge_json='{"score": 2, "reason": "差"}'))
     state = _invoke("tr-hand")
     steps = [s["step"] for s in state["decision_trace"]]
     assert steps == ["classify", "quality_check", "handoff", "final_response"]
@@ -54,6 +50,7 @@ def test_trace_out_of_scope(graph_env, monkeypatch):
             raise AssertionError("护栏后不应调 LLM")
 
     monkeypatch.setattr(svc, "get_llm", lambda: OOS())
+    _patch_llm(monkeypatch, OOS())
     state = _invoke("tr-oos", query="写一首诗")
     steps = [s["step"] for s in state["decision_trace"]]
     assert steps == ["classify", "final_response"]

@@ -90,6 +90,12 @@ def stage_gate(llm, data, workers=None):
         for it in b["items"]
     ]
     todo = [(idx, q, bucket) for idx, (q, bucket) in enumerate(in_scope) if q not in cache]
+    # 评测专用工单库整体重置：上轮遗留的 open 工单会触发挂起短路、污染延迟与误拦数字
+    db_file = os.environ["TICKET_DB_PATH"]
+    for suffix in ("", "-wal", "-shm"):
+        p = db_file + suffix
+        if os.path.exists(p):
+            os.remove(p)
     app = svc.make_graph()
 
     def run_one(item):

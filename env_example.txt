@@ -55,3 +55,5 @@ RUN_WAIT_LIMIT=90
 
 # Windows: if `langgraph dev` fails loading .env with UnicodeDecodeError, keep comments
 # ASCII-only (as here) or save .env as UTF-8 with BOM.
+# JUDGE_MODEL=Qwen/Qwen3-8B
+# JUDGE_TIMEOUT=120

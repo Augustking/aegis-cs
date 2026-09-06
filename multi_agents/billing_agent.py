@@ -28,6 +28,8 @@ class BillingAgent(BaseAgent):
 
         # 从账单数据库中匹配相关信息
         matched_info = self._match_billing_info(customer_query)
+        # 证据上下文：供质检节点做接地质检（grounded judging）
+        state["evidence_context"] = matched_info
 
         # 构建系统提示并增强对话上下文说明
         base_system_prompt = f"""你是{self.name}，专门负责{self.role}。
