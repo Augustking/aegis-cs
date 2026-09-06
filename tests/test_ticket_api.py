@@ -22,7 +22,7 @@ def test_list_and_get_ticket(client):
     tid = ticket_store.create_ticket("th-1", "问题", "草稿", 2.0, "低分")
     resp = client.get("/api/tickets?status=open")
     assert resp.status_code == 200
-    assert resp.get_json()["tickets"][0]["id"] == tid
+    assert resp.get_json()["items"][0]["id"] == tid
     detail = client.get(f"/api/tickets/{tid}")
     assert detail.status_code == 200
     assert detail.get_json()["ticket"]["draft_reply"] == "草稿"

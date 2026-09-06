@@ -539,7 +539,7 @@ def human_handoff_node(state: AgentState) -> AgentState:
     try:
         sid = str(state.get("session_id", ""))
         existing = next(
-            (t for t in ticket_store.list_tickets(status="open") if t["thread_id"] == sid),
+            (t for t in ticket_store.list_tickets(status="open")["items"] if t["thread_id"] == sid),
             None,
         )
         if existing:

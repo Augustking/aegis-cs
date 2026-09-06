@@ -75,7 +75,7 @@ def test_run_timeout_degrades_to_ticket(tmp_path, monkeypatch):
     assert err == "run_timeout"
     assert "转人工" in text
     assert code == 504
-    tickets = ticket_store.list_tickets(status="open")
+    tickets = ticket_store.list_tickets(status="open")["items"]
     assert len(tickets) == 1
     assert tickets[0]["quality_reason"] == "run_timeout"
     assert tickets[0]["thread_id"] == tid

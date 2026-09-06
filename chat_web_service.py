@@ -276,7 +276,7 @@ def ticket_stream_events(poll_interval: float = 2.0):
     last_ids = None
     while True:
         try:
-            ids = [t["id"] for t in ticket_store.list_tickets(status="open")]
+            ids = [t["id"] for t in ticket_store.list_tickets(status="open")["items"]]
             event = ticket_change_event(last_ids, ids)
             if event:
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"

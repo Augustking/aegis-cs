@@ -14,7 +14,7 @@ def tmp_db(monkeypatch, tmp_path):
 def test_handle_run_timeout_creates_ticket_and_reply():
     reply = cws.handle_run_timeout("th-timeout", "帮我查退款进度")
     assert "人工" in reply
-    tickets = ticket_store.list_tickets(status="open")
+    tickets = ticket_store.list_tickets(status="open")["items"]
     assert len(tickets) == 1
     t = tickets[0]
     assert t["thread_id"] == "th-timeout"
@@ -27,7 +27,7 @@ def test_handle_run_timeout_deduplicates():
     """超时落单前若已有 open 工单，不重复建"""
     cws.handle_run_timeout("th-dup", "问题一")
     cws.handle_run_timeout("th-dup", "问题二")
-    assert len(ticket_store.list_tickets(status="open")) == 1
+    assert len(ticket_store.list_tickets(status="open")["items"]) == 1
 
 
 def test_run_wait_limit_env_override(monkeypatch):

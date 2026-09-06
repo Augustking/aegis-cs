@@ -27,10 +27,10 @@ def test_handoff_dedupes_open_ticket(tmp_path):
     s1 = svc.human_handoff_node(_state("th-dedup"))
     first_id = s1["ticket_id"]
     assert first_id
-    assert len(ticket_store.list_tickets(status="open")) == 1
+    assert len(ticket_store.list_tickets(status="open")["items"]) == 1
 
     # 挂起检查失效等异常场景下，第二次进入 handoff 节点
     s2 = svc.human_handoff_node(_state("th-dedup"))
     assert s2["needs_human"] is True
     assert s2["ticket_id"] == first_id, "应复用已有工单而非新建"
-    assert len(ticket_store.list_tickets(status="open")) == 1
+    assert len(ticket_store.list_tickets(status="open")["items"]) == 1

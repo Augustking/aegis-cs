@@ -368,8 +368,11 @@ def list_tickets_route():
     if status not in ('open', 'resolved', None, ''):
         return jsonify({'error': 'status 仅支持 open/resolved'}), 400
     try:
-        tickets = ticket_store.list_tickets(status or None)
-        return jsonify({'tickets': tickets})
+        limit = min(int(request.args.get('limit', 200)), 500)
+        offset = max(int(request.args.get('offset', 0)), 0)
+        q = request.args.get('q', '')
+        result = ticket_store.list_tickets(status or None, q=q, limit=limit, offset=offset)
+        return jsonify(result)
     except Exception as e:
         return jsonify({'error': f'获取工单失败: {e}'}), 500
 
