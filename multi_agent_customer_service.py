@@ -464,13 +464,23 @@ def human_handoff_node(state: AgentState) -> AgentState:
     """低分回复转人工：原始回答作为草稿落工单，线程进入挂起，用户收固定话术。"""
     ticket_id = ""
     try:
-        ticket_id = ticket_store.create_ticket(
-            thread_id=str(state.get("session_id", "")),
-            user_query=state.get("customer_query", ""),
-            draft_reply=state.get("response", ""),
-            quality_score=state.get("quality_score", 0.0),
-            quality_reason=state.get("quality_reason", ""),
+        sid = str(state.get("session_id", ""))
+        existing = next(
+            (t for t in ticket_store.list_tickets(status="open") if t["thread_id"] == sid),
+            None,
         )
+        if existing:
+            # 挂起检查失效等异常场景下可能重复进入：复用已有工单，不重复建单
+            ticket_id = existing["id"]
+            print(f"⚠️ 会话 {sid} 已有 open 工单，复用 {ticket_id}")
+        else:
+            ticket_id = ticket_store.create_ticket(
+                thread_id=sid,
+                user_query=state.get("customer_query", ""),
+                draft_reply=state.get("response", ""),
+                quality_score=state.get("quality_score", 0.0),
+                quality_reason=state.get("quality_reason", ""),
+            )
     except Exception as e:
         print(f"❌ 工单落库失败（转接话术照常回复）: {e}")
 
