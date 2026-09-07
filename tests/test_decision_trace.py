@@ -24,7 +24,7 @@ def test_trace_pass_path(graph_env):
     assert steps == ["classify", "quality_check", "final_response"]
     assert state["decision_trace"][0]["query_type"] == "billing"
     assert state["decision_trace"][1]["score"] == 9.0
-    assert state["decision_trace"][1]["threshold"] == 8.0
+    assert state["decision_trace"][1]["threshold"] == 6.0
     assert state["decision_trace"][2]["agent"] == "账单专家"
 
 
