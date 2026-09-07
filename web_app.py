@@ -452,7 +452,8 @@ def main():
     print("💡 按 Ctrl+C 停止服务")
     print()
     debug = os.getenv('FLASK_DEBUG', 'false').lower() in ('1', 'true', 'yes')
-    app.run(host='0.0.0.0', port=5000, debug=debug)
+    port = int(os.getenv('FLASK_PORT', '5000'))
+    app.run(host='0.0.0.0', port=port, debug=debug)
 
 
 if __name__ == "__main__":
