@@ -24,7 +24,7 @@
 
 ## 3. 简历项目描述（定稿草稿）
 
-## 智能客服系统 Aegis-CS——AI 质检与坐席协作平台（独立完成，2026.7–9，GitHub 开源可复现：github.com/Augustking/aegis-cs）
+## 智能客服系统 Aegis-CS——AI 质检与坐席协作平台（独立完成，2026.7–9，GitHub 开源 + 线上 Demo：github.com/Augustking/aegis-cs · http://119.3.214.16:5000/chat）
 
 技术栈： Python、LangGraph、LangChain、Flask、Vue3、Element Plus、Pinia、SSE、SQLite、Docker Compose、pytest
 

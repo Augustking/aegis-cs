@@ -119,9 +119,9 @@ cd ..
 
 ### 在线 Demo
 
-> 部署指南见 [docs/deploy-server.md](docs/deploy-server.md)（服务器 Docker 部署 / 域名 + HTTPS / 安全清单）。
-
-<!-- Demo 上线后替换下面一行：- **在线体验**：https://你的域名/chat（客户咨询） · /agent/login（坐席工作台，演示账号见部署文档） -->
+- **在线体验**：[客户咨询入口](http://119.3.214.16:5000/chat) · [坐席工作台](http://119.3.214.16:5000/agent/login)（登录账号 `agent` / `aegis-demo`）
+- 单轮回复需真实调用大模型（分类 + 应答 + 质检三次调用），约 1-2 分钟属正常；超过 180s 自动转人工工单
+- 部署指南见 [docs/deploy-server.md](docs/deploy-server.md)（服务器 Docker 部署 / 域名 + HTTPS / 安全清单）
 
 ### Docker 部署
 
