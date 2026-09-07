@@ -257,10 +257,11 @@ if __name__ == "__main__":
     parser.add_argument("stage", choices=["classify", "gate", "bad", "report", "all"])
     args = parser.parse_args()
     data = load_set()
+    # 与生产链路一致：分类走 CLASSIFY_MODEL 通道，质检走 JUDGE_MODEL 通道
     if args.stage in ("classify", "all"):
-        stage_classify(svc.get_llm(), data)
+        stage_classify(svc.get_classify_llm() or svc.get_llm(), data)
     if args.stage in ("bad", "all"):
-        stage_bad(svc.get_llm(), data)
+        stage_bad(svc.get_judge_llm() or svc.get_llm(), data)
     if args.stage in ("gate", "all"):
         stage_gate(svc.get_llm(), data)
     if args.stage in ("report", "all"):

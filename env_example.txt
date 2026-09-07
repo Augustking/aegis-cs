@@ -24,7 +24,7 @@ FLASK_SECRET_KEY=your-secret-key-here
 
 # ===== Quality check & human handoff =====
 # 质检放行阈值（0-10），低于即转人工；单次请求可用 configurable.quality_threshold 覆盖
-QUALITY_THRESHOLD=8.0
+QUALITY_THRESHOLD=6.0
 # 质检开关（false 时全部放行）
 QUALITY_CHECK_ENABLED=true
 # 意图分类专用模型（可选轻量档降延迟降成本）；留空与 OPENAI_MODEL 一致
