@@ -45,7 +45,7 @@ def test_faithfulness_zero_forces_handoff(monkeypatch):
     state = app.invoke({"customer_query": "退款什么时候到账", "session_id": "t-veto"})
     assert state["needs_human"] is True
     assert "faithfulness_veto" in state["quality_reason"]
-    assert len(ticket_store.list_tickets(status="open")) == 1
+    assert len(ticket_store.list_tickets(status="open")["items"]) == 1
 
 
 def test_grounded_evidence_reaches_judge(monkeypatch):

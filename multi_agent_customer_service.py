@@ -523,8 +523,12 @@ def quality_check_node(state: AgentState) -> AgentState:
 
 
 def route_after_quality_check(state: AgentState) -> str:
-    """放行/转人工路由：总分低于阈值，或可信度一票否决（编造一票不过，不看总分）。"""
-    if state.get("quality_score", 10.0) < _quality_threshold():
+    """放行/转人工路由：总分低于阈值，或可信度一票否决（编造一票不过，不看总分）。
+    阈值 0 为"仅记录不拦截"模式（测试/演示逃生通道）：照常打分记录，但不拦截。"""
+    threshold = _quality_threshold()
+    if threshold <= 0:
+        return "pass"
+    if state.get("quality_score", 10.0) < threshold:
         return "handoff"
     dims = state.get("quality_dims") or {}
     if dims.get("faithfulness", 3.0) <= 0:
@@ -539,7 +543,7 @@ def human_handoff_node(state: AgentState) -> AgentState:
     try:
         sid = str(state.get("session_id", ""))
         existing = next(
-            (t for t in ticket_store.list_tickets(status="open") if t["thread_id"] == sid),
+            (t for t in ticket_store.list_tickets(status="open")["items"] if t["thread_id"] == sid),
             None,
         )
         if existing:
@@ -597,8 +601,8 @@ def final_response_node(state: AgentState) -> AgentState:
 #     "customer_service": "./multi_agent_customer_service.py:make_graph"
 # },
 # 也可以在langgraph.json文件中使用workflow配置化的方式定义图的结构，但功能相对简单，无法实现复杂的逻辑
-def make_graph():
-    """构建LangGraph工作流图"""
+def make_graph(checkpointer=None):
+    """构建LangGraph工作流图；传入 checkpointer 时对话状态跨进程/重启持久化。"""
     # 创建工作流图
     workflow = StateGraph(AgentState)
 
@@ -648,7 +652,7 @@ def make_graph():
     workflow.set_finish_point("final_response")
 
     # 编译工作流
-    app = workflow.compile()
+    app = workflow.compile(checkpointer=checkpointer)
 
     print("✅ LangGraph工作流图构建完成")
     return app

@@ -51,6 +51,6 @@ def test_list_tickets_filter_and_order():
     t1 = _mk_ticket("t-a")
     t2 = _mk_ticket("t-b")
     ticket_store.resolve_ticket(t1, "ok")
-    open_list = ticket_store.list_tickets(status="open")
+    open_list = ticket_store.list_tickets(status="open")["items"]
     assert [t["id"] for t in open_list] == [t2]
-    assert [t["id"] for t in ticket_store.list_tickets()] == [t2, t1]  # created_at 倒序
+    assert [t["id"] for t in ticket_store.list_tickets()["items"]] == [t2, t1]  # created_at 倒序

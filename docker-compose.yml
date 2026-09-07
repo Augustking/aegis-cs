@@ -1,0 +1,37 @@
+services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    environment:
+      - FLASK_DEBUG=false
+      # SQLite 数据文件统一落到数据卷（默认在容器内 /app/data）
+      - TICKET_DB_PATH=/app/data/tickets.db
+      - AUTH_DB_PATH=/app/data/auth.db
+      - CHECKPOINT_DB=/app/data/checkpoints.sqlite
+    volumes:
+      - app-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:5000/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+
+  # 可选：PostgreSQL（CHECKPOINT_DB / TICKET_DB_PATH 指向 DSN 时启用）
+  # 启动方式：docker compose --profile postgres up -d
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aegis-dev}
+      POSTGRES_DB: aegis
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  app-data:
+  pgdata:

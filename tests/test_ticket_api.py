@@ -8,15 +8,21 @@ import web_app
 @pytest.fixture()
 def client(monkeypatch, tmp_path):
     monkeypatch.setenv("TICKET_DB_PATH", str(tmp_path / "tickets.db"))
+    monkeypatch.setenv("AUTH_DB_PATH", str(tmp_path / "auth.db"))
+    import auth_store
+    auth_store.ensure_default_agent()
     web_app.app.config["TESTING"] = True
-    return web_app.app.test_client()
+    c = web_app.app.test_client()
+    r = c.post("/api/auth/login", json={"username": "agent", "password": "aegis-demo"})
+    assert r.status_code == 200
+    return c
 
 
 def test_list_and_get_ticket(client):
     tid = ticket_store.create_ticket("th-1", "问题", "草稿", 2.0, "低分")
     resp = client.get("/api/tickets?status=open")
     assert resp.status_code == 200
-    assert resp.get_json()["tickets"][0]["id"] == tid
+    assert resp.get_json()["items"][0]["id"] == tid
     detail = client.get(f"/api/tickets/{tid}")
     assert detail.status_code == 200
     assert detail.get_json()["ticket"]["draft_reply"] == "草稿"

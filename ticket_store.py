@@ -94,6 +94,18 @@ def has_open_ticket(thread_id: str) -> bool:
     return row is not None
 
 
+def latest_ticket_for_thread(thread_id: str) -> Optional[Dict[str, Any]]:
+    """该线程最近一张工单（任意状态，新→旧）；无工单返回 None。"""
+    with _connect() as conn:
+        conn.executescript(_SCHEMA)
+        row = conn.execute(
+            "SELECT * FROM tickets WHERE thread_id=?"
+            " ORDER BY created_at DESC, rowid DESC LIMIT 1",
+            (thread_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
 def get_ticket(ticket_id: str) -> Optional[Dict[str, Any]]:
     with _connect() as conn:
         conn.executescript(_SCHEMA)
@@ -103,21 +115,30 @@ def get_ticket(ticket_id: str) -> Optional[Dict[str, Any]]:
     return dict(row) if row else None
 
 
-def list_tickets(status: Optional[str] = None) -> List[Dict[str, Any]]:
-    # created_at 为秒级精度，同秒创建时用 rowid（插入序）做稳定 tiebreaker
+def list_tickets(status: Optional[str] = None, q: str = "",
+                 limit: int = 200, offset: int = 0) -> Dict[str, Any]:
+    """工单列表：状态过滤 + 关键词（问题/编号/回复）+ 分页。
+    返回 {items, total, limit, offset}；created_at 倒序（同秒按插入序）。"""
+    q = (q or "").strip().lower()
+    like = f"%{q}%"
     with _connect() as conn:
         conn.executescript(_SCHEMA)
+        where, params = [], []
         if status:
-            rows = conn.execute(
-                "SELECT * FROM tickets WHERE status=?"
-                " ORDER BY created_at DESC, rowid DESC",
-                (status,),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM tickets ORDER BY created_at DESC, rowid DESC"
-            ).fetchall()
-    return [dict(r) for r in rows]
+            where.append("status=?")
+            params.append(status)
+        if q:
+            where.append("(LOWER(user_query) LIKE ? OR LOWER(id) LIKE ? OR LOWER(draft_reply) LIKE ? OR LOWER(human_reply) LIKE ?)")
+            params += [like, like, like, like]
+        where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+        total = conn.execute(
+            f"SELECT COUNT(*) FROM tickets {where_sql}", params
+        ).fetchone()[0]
+        rows = conn.execute(
+            f"SELECT * FROM tickets {where_sql} ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?",
+            params + [int(limit), int(offset)],
+        ).fetchall()
+    return {"items": [dict(r) for r in rows], "total": total, "limit": int(limit), "offset": int(offset)}
 
 
 def resolve_ticket(ticket_id: str, human_reply: str) -> bool:

@@ -71,7 +71,7 @@ def test_high_score_passes(graph_env):
     assert state["quality_score"] == 9.0
     assert state["needs_human"] is False
     assert "【账单专家" in state["response"]
-    assert ticket_store.list_tickets() == []
+    assert ticket_store.list_tickets()["items"] == []
 
 
 def test_low_score_goes_handoff(graph_env, monkeypatch):
@@ -81,7 +81,7 @@ def test_low_score_goes_handoff(graph_env, monkeypatch):
     assert state["quality_score"] == 2.0
     assert state["current_agent"] == "人工客服"
     assert "人工工单" in state["response"]
-    tickets = ticket_store.list_tickets(status="open")
+    tickets = ticket_store.list_tickets(status="open")["items"]
     assert len(tickets) == 1
     # 业务智能体的原始回答作为草稿留存在工单里，供坐席采纳/修改
     assert tickets[0]["draft_reply"].startswith("您好，已为您登记")
@@ -100,7 +100,7 @@ def test_suspended_thread_short_circuits(graph_env):
     assert state["query_type"] == "suspended"
     assert "转接人工" in state["response"]
     # 不应产生新工单
-    assert len(ticket_store.list_tickets()) == 1
+    assert len(ticket_store.list_tickets()["items"]) == 1
 
 
 def test_out_of_scope_skips_quality_check(graph_env, monkeypatch):

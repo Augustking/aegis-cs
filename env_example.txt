@@ -32,7 +32,7 @@ QUALITY_CHECK_ENABLED=true
 
 # ===== Chat run wait limit =====
 # 单轮对话等待上限（秒），超时降级为落工单 + 转人工话术
-RUN_WAIT_LIMIT=90
+RUN_WAIT_LIMIT=180
 
 # ===== Notes =====
 
