@@ -7,7 +7,7 @@
   <a href="#"><img src="https://img.shields.io/badge/Python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <a href="#"><img src="https://img.shields.io/badge/Vue-3.5-42b883.svg" alt="Vue 3.5"></a>
   <a href="#"><img src="https://img.shields.io/badge/LangGraph-%E2%89%A51.0-purple.svg" alt="LangGraph"></a>
-  <a href="#"><img src="https://img.shields.io/badge/tests-27%20passed-brightgreen.svg" alt="tests 27 passed"></a>
+  <a href="#"><img src="https://img.shields.io/badge/tests-69%20passed-brightgreen.svg" alt="tests 69 passed"></a>
 </p>
 
 <p align="center"><em>LLM 质检打分 · 低分自动转人工 · 工单闭环 · Vue3 坐席工作台 · 决策轨迹回放</em></p>
@@ -185,7 +185,7 @@ python evals/run_eval.py all    # 分类 → 坏例打分 → 真实链路 → �
 
 ## 测试与验收
 
-- `pytest tests/`：27 个单元/集成测试（工单 CRUD、质检解析容错、四条图路径的决策轨迹、SSE 事件、SPA 路由）
+- `pytest tests/`：69 个单元/集成测试（工单 CRUD、质检解析容错、四条图路径的决策轨迹、SSE 事件、SPA 路由）
 - `python deploy_verify.py`：端到端验收剧本（正常放行 / 强制转人工 / 挂起等待 / 人工处理恢复四场景），质量阈值经 `configurable` 注入，不依赖 LLM 输出的随机性
 
 ## License
