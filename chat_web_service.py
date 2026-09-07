@@ -28,7 +28,7 @@ LANGGRAPH_API_URL: str = os.getenv("LANGGRAPH_API_URL", "http://127.0.0.1:2024")
 LANGGRAPH_GRAPH_NAME: str = os.getenv("LANGGRAPH_GRAPH_NAME", "customer_service")
 
 # 单轮对话等待上限（秒）；超时不再返回 500，而是降级为落工单 + 转人工话术
-RUN_WAIT_LIMIT: int = int(os.getenv("RUN_WAIT_LIMIT", "90"))
+RUN_WAIT_LIMIT: int = int(os.getenv("RUN_WAIT_LIMIT", "180"))
 
 # 超时降级时给用户的固定话术（与图内 HANDOFF_REPLY 语义一致）
 TIMEOUT_HANDOFF_REPLY = (

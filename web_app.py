@@ -179,7 +179,10 @@ def customer_chat():
     if session_id != 'default':
         vid = get_visitor_id()
         if not auth_store.visitor_owns_thread(session_id, vid):
-            return visitor_response({'error': '会话不存在或无权访问'}, 403)
+            if auth_store.thread_known(session_id):
+                return visitor_response({'error': '会话不存在或无权访问'}, 403)
+            # 首次使用即认领：客户端预生成的线程 ID 归当前访客
+            auth_store.bind_thread_owner(session_id, vid)
     ai_text, err_msg, http_code, tid = run_chat_sync(message, session_id if session_id != 'default' else None)
     if not tid:
         return visitor_response({'error': err_msg or '会话创建失败'}, http_code or 500)
@@ -448,7 +451,8 @@ def main():
     print("📱 访问地址: http://localhost:5000")
     print("💡 按 Ctrl+C 停止服务")
     print()
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    debug = os.getenv('FLASK_DEBUG', 'false').lower() in ('1', 'true', 'yes')
+    app.run(host='0.0.0.0', port=5000, debug=debug)
 
 
 if __name__ == "__main__":

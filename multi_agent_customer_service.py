@@ -523,8 +523,12 @@ def quality_check_node(state: AgentState) -> AgentState:
 
 
 def route_after_quality_check(state: AgentState) -> str:
-    """放行/转人工路由：总分低于阈值，或可信度一票否决（编造一票不过，不看总分）。"""
-    if state.get("quality_score", 10.0) < _quality_threshold():
+    """放行/转人工路由：总分低于阈值，或可信度一票否决（编造一票不过，不看总分）。
+    阈值 0 为"仅记录不拦截"模式（测试/演示逃生通道）：照常打分记录，但不拦截。"""
+    threshold = _quality_threshold()
+    if threshold <= 0:
+        return "pass"
+    if state.get("quality_score", 10.0) < threshold:
         return "handoff"
     dims = state.get("quality_dims") or {}
     if dims.get("faithfulness", 3.0) <= 0:

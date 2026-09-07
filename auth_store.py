@@ -127,6 +127,20 @@ def visitor_owns_thread(thread_id: str, visitor_id: str) -> bool:
     return row is not None
 
 
+def thread_known(thread_id: str) -> bool:
+    """线程是否已被登记过（登记过即归属明确，其他访客不得认领）。"""
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM thread_index WHERE thread_id=?"
+            " UNION SELECT 1 FROM thread_owners WHERE thread_id=?",
+            (thread_id, thread_id),
+        ).fetchone()
+    finally:
+        conn.close()
+    return row is not None
+
+
 def threads_of_visitor(visitor_id: str, limit: int = 50) -> list:
     """访客自己的线程 ID 列表（新→旧）。"""
     conn = _connect()
