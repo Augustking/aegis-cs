@@ -117,6 +117,12 @@ cd ..
 .venv\Scripts\python.exe web_app.py
 ```
 
+### 在线 Demo
+
+> 部署指南见 [docs/deploy-server.md](docs/deploy-server.md)（服务器 Docker 部署 / 域名 + HTTPS / 安全清单）。
+
+<!-- Demo 上线后替换下面一行：- **在线体验**：https://你的域名/chat（客户咨询） · /agent/login（坐席工作台，演示账号见部署文档） -->
+
 ### Docker 部署
 
 ```bash
