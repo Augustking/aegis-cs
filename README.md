@@ -80,13 +80,21 @@ flowchart LR
 
 ## 快速开始
 
+### 入口与角色
+
+- **客户咨询**：`http://localhost:5000/chat`（无需登录）
+- **坐席登录**：`http://localhost:5000/agent/login`（默认账号 `agent` / `aegis-demo`，口令可用 `AGENT_DEFAULT_PASSWORD` 修改）
+- **坐席处理台**：`/agent/inbox`；**会话复盘**：`/agent/review`
+
+### 本地运行
+
 ```bash
 git clone https://github.com/Augustking/aegis-cs.git
 cd aegis-cs
 
 # 后端（Python 3.10+）
 python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt "langgraph-cli[inmem]" colorama
+.venv\Scripts\pip install -r requirements.txt
 copy env_example.txt .env        # 填入 OPENAI_API_KEY（硅基流动 / 智谱等 OpenAI 兼容服务均可）
 
 # 前端（Node 18+）
@@ -95,12 +103,20 @@ npm install
 npm run build
 cd ..
 
-# 启动（两个终端）
-.venv\Scripts\langgraph.exe dev --no-browser --port 2024   # 编排服务
-.venv\Scripts\python.exe web_app.py                         # Web 服务
+# 启动（单服务：LangGraph 图内嵌于 Flask，无独立编排服务）
+.venv\Scripts\python.exe web_app.py
 ```
 
-访问 `http://localhost:5000`。开发前端可用 `cd frontend && npm run dev`（5173 端口，API 自动代理）。
+### Docker 部署
+
+```bash
+copy env_example.txt .env && rem 填入 OPENAI_API_KEY
+docker compose up -d
+```
+
+数据（工单/账号/对话检查点）落在 `app-data` 卷；可选 PostgreSQL：`docker compose --profile postgres up -d`（并按 `CHECKPOINT_DB` 文档指向 DSN）。
+
+开发前端可用 `cd frontend && npm run dev`（5173 端口，API 自动代理）。
 
 > Windows 一键启动脚本见 `scripts/start_services.bat`（含端口检测，防止重复启动）。
 
@@ -109,8 +125,12 @@ cd ..
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL` | 硅基流动 / Qwen | 任意 OpenAI 兼容服务 |
-| `QUALITY_THRESHOLD` | `6.0` | 质检放行阈值，低于即转人工 |
+| `CLASSIFY_MODEL` | 同主模型 | 意图分类专用模型（可配轻量档降延迟） |
+| `JUDGE_MODEL` / `JUDGE_TIMEOUT` | 同主模型 / 120s | 质检 judge 专用模型与超时 |
+| `QUALITY_THRESHOLD` | `8.0` | 质检放行阈值（经扫描定标）；`0` 表示仅记录不拦截 |
 | `QUALITY_CHECK_ENABLED` | `true` | 质检开关（关闭后全部放行） |
+| `RUN_WAIT_LIMIT` | `180` | 单轮对话等待上限，超时降级为转人工工单 |
+| `TICKET_DB_PATH` / `AUTH_DB_PATH` / `CHECKPOINT_DB` | 项目根 | SQLite 数据文件位置；`CHECKPOINT_DB` 支持 postgres DSN |
 
 ## API 一览
 

@@ -398,3 +398,7 @@ tickets.db-shm
 
 # Eval artifacts
 evals/results/
+checkpoints.sqlite-wal
+checkpoints.sqlite-shm
+auth.db-wal
+auth.db-shm
